@@ -5,11 +5,11 @@
 // - Chỉ xóa cache có tiền tố "dpxn-" của chính app.
 // - Tự cập nhật: bản mới được kích hoạt ngay khi tải xong; trang tự tải lại ở thời điểm an toàn.
 const SHARE_CACHE = 'dpxn-share';
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
 const CACHE = 'dpxn-' + VERSION;
 const CORE = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',
-  './js/main.js', './js/app.js', './js/dom.js', './js/validation.js', './js/classification.js', './js/storage.js', './js/ocr.js', './js/install.js', './js/interpret.js', './js/files.js',
+  './js/main.js', './js/app.js', './js/dom.js', './js/validation.js', './js/classification.js', './js/storage.js', './js/ocr.js', './js/install.js', './js/interpret.js', './js/files.js', './js/summary.js',
   './data/tests.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 
