@@ -1,0 +1,29 @@
+{
+ "name": "Đọc Phiếu Xét Nghiệm",
+ "short_name": "Xét nghiệm",
+ "description": "Hiểu ý nghĩa 56 chỉ số xét nghiệm máu, nước tiểu, nội tiết.",
+ "lang": "vi",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f3f6f7",
+ "theme_color": "#2346a0",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-maskable.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
