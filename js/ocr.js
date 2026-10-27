@@ -149,6 +149,7 @@ export function startsWithTestKey(str) {
 
 export function parseLabText(text, tests) {
   if (!keyStartRe) configureTests(tests);
+  const hintsAll = profileHints(text);
   const matchers = buildMatchers(tests);
   const byId = new Map(tests.map(t => [t.id, t]));
   const items = new Map();
@@ -241,28 +242,22 @@ export function parseLabText(text, tests) {
         item.warnings.push(`Phiếu ghi đơn vị "${um[1]}", app dùng "${t.unit}". App không tự đổi đơn vị — hãy kiểm tra.`);
       }
     }
-    // Khoảng tham chiếu trên phiếu: "a - b", "< b", "> a"
-    const rr = /(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)/.exec(after);
+    // Khoảng tham chiếu trên phiếu: "a - b", "a đến b", "< b", "≤ b", "> a", "Nam: a-b; Nữ: c-d"
+    const pr = parseRefText(after);
     let labRef = null;
-    if (rr) {
-      const lo = Number(rr[1].replace(',', '.')), hi = Number(rr[2].replace(',', '.'));
-      if (Number.isFinite(lo) && Number.isFinite(hi) && lo < hi) labRef = { lo, hi };
-    } else {
-      const one = /([<>]|≤|≥)\s*=?\s*(\d+(?:[.,]\d+)?)/.exec(after);
-      if (one) {
-        const v = Number(one[2].replace(',', '.'));
-        if (Number.isFinite(v)) labRef = one[1] === '<' || one[1] === '≤' ? { lo: null, hi: v } : { lo: v, hi: null };
-      }
-    }
+    if (pr && pr.bySex) {
+      item.refBySex = pr.bySex;
+      const sx = hintsAll.sex;
+      labRef = sx ? pr.bySex[sx] : null;
+      if (!labRef) item.notes.push('Phiếu ghi ngưỡng riêng cho nam và nữ — app sẽ dùng theo giới tính bạn chọn.');
+    } else if (pr) labRef = pr;
     const scale = appScale(t);
-    if (labRef && !unitMismatch) {
-      // Ngưỡng đọc được phải cùng cỡ với ngưỡng của app; lệch ~10 lần thường do OCR mất dấu thập phân
-      const ref = labRef.hi ?? labRef.lo;
-      const appRef = labRef.hi != null ? scale.hi : scale.lo;
-      if (appRef && (ref > appRef * 3 || ref < appRef / 3)) {
-        item.notes.push('Không đọc chắc ngưỡng trên phiếu nên app dùng ngưỡng chuẩn. Bạn có thể nhập lại ngưỡng sau.');
-      } else item.labRef = labRef;
-    }
+    // Ngưỡng đọc được phải cùng cỡ với ngưỡng của app; lệch ~10 lần thường do OCR mất dấu thập phân
+    const sane = r => { if (!r) return false; const ref = r.hi ?? r.lo; const appRef = r.hi != null ? scale.hi : scale.lo; return !(appRef && (ref > appRef * 3 || ref < appRef / 3)); };
+    if (unitMismatch) { labRef = null; item.refBySex = null; }
+    if (item.refBySex && !(sane(item.refBySex.male) && sane(item.refBySex.female))) { item.refBySex = null; labRef = null; item.notes = item.notes.filter(x => !/riêng cho nam/.test(x)); item.notes.push('Không đọc chắc ngưỡng trên phiếu nên app dùng ngưỡng chuẩn.'); }
+    else if (labRef && !sane(labRef)) item.notes.push('Không đọc chắc ngưỡng trên phiếu nên app dùng ngưỡng chuẩn. Bạn có thể nhập lại ngưỡng sau.');
+    else if (labRef) item.labRef = labRef;
     // Có thể OCR làm mất dấu thập phân (72.1 → 721): hỏi lại, không tự sửa
     if (p.state === 'ok' && !unitMismatch && !/[.,]/.test(rawVal) && rawVal.replace(/\D/g, '').length >= 2) {
       const v = p.value, inWin = x => x >= scale.winLo && x <= scale.winHi;
@@ -278,7 +273,7 @@ export function parseLabText(text, tests) {
     }
     items.set(t.id, item);
   }
-  return { items: [...items.values()], unmatched, hints: profileHints(text) };
+  return { items: [...items.values()], unmatched, hints: hintsAll, labName: labNameFromText(text) };
 }
 
 const KNOWN_UNITS = new Set(['mg/dl', 'mmol/l', 'umol/l', 'g/dl', 'g/l', 'u/l', 'ng/ml', 'pg/ml', 'nmol/l', 'pmol/l', '%',
@@ -319,6 +314,50 @@ function appScale(t) {
   const winLo = lo ? lo / 4 : 0;
   const winHi = hi ? hi * 4 : (lo ? lo * 8 : Infinity);
   return { lo: lo || null, hi, winLo, winHi };
+}
+
+const NUM = '(\\d+(?:[.,]\\d+)?)';
+const RANGE_RE = new RegExp(NUM + '\\s*(?:-|~|den|to)\\s*' + NUM);
+const CMP_RE = new RegExp('(<=|>=|=<|=>|<|>|≤|≥)\\s*' + NUM);
+const toNum = x => Number(String(x).replace(',', '.'));
+function oneRef(str) {
+  const r = RANGE_RE.exec(str);
+  if (r) { const lo = toNum(r[1]), hi = toNum(r[2]); return Number.isFinite(lo) && Number.isFinite(hi) && lo < hi ? { lo, hi, at: r.index } : null; }
+  const c = CMP_RE.exec(str);
+  if (c) { const v = toNum(c[2]); if (!Number.isFinite(v)) return null; return /</.test(c[1]) || c[1] === '≤' ? { lo: null, hi: v, at: c.index } : { lo: v, hi: null, at: c.index }; }
+  return null;
+}
+/**
+ * Đọc khoảng tham chiếu từ phần chữ sau kết quả (đã chuẩn hóa không dấu, chữ thường).
+ * @returns null | {lo, hi} | {bySex: {male:{lo,hi}, female:{lo,hi}}}
+ */
+export function parseRefText(str) {
+  const s = String(str);
+  const m = /(?:^|[^a-z])(nam|male|m)(?![a-z])\s*[:=]?\s*([^;|]*?)\s*[;,|/]?\s*(?:nu|female|f)(?![a-z])\s*[:=]?\s*(.+)$/.exec(s)
+    || /(?:^|[^a-z])(nu|female|f)(?![a-z])\s*[:=]?\s*([^;|]*?)\s*[;,|/]?\s*(?:nam|male|m)(?![a-z])\s*[:=]?\s*(.+)$/.exec(s);
+  if (m) {
+    const a = oneRef(m[2]), b = oneRef(m[3]);
+    if (a && b) {
+      const first = /^(nam|male|m)$/.test(m[1]);
+      const clean = r => ({ lo: r.lo, hi: r.hi });
+      return { bySex: first ? { male: clean(a), female: clean(b) } : { male: clean(b), female: clean(a) } };
+    }
+  }
+  const r = oneRef(s);
+  return r ? { lo: r.lo, hi: r.hi } : null;
+}
+
+/** Tên nơi xét nghiệm ở đầu phiếu (bệnh viện, phòng khám, trung tâm…). */
+export function labNameFromText(text) {
+  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 10);
+  for (const l of lines) {
+    const n = norm(l);
+    if (/^khoa\b/.test(n) || /phieu ket qua|ho ten|ten xet nghiem/.test(n)) continue;
+    if (/(benh vien|phong kham|trung tam|vien |hospital|clinic|medlatec|diag|labo|xet nghiem y khoa|\bbv\b|\bpk\b|\bttyt\b|tram y te)/.test(n)) {
+      return l.replace(/\s{2,}.*$/, '').replace(/[\s:;,.-]+$/, '').slice(0, 80);
+    }
+  }
+  return '';
 }
 
 /** Gợi ý giới tính/tuổi đọc được trên phiếu. */
