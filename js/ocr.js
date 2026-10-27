@@ -135,24 +135,55 @@ function fixDigits(s) {
  * Tách các chỉ số từ văn bản OCR.
  * @returns {{items: Array, unmatched: string[]}}
  */
+let keyStartRe = null;
+/** Ghi nhớ danh sách xét nghiệm để nhận biết đầu dòng là tên xét nghiệm (dùng khi ghép chữ PDF). */
+export function configureTests(tests) {
+  const keys = new Set();
+  for (const t of tests) for (const k of (EXTRA_KEYS[t.id] || [t.short])) if (norm(k).length >= 2) keys.add(norm(k));
+  const esc = [...keys].sort((a, b) => b.length - a.length).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  keyStartRe = new RegExp('^(?:' + esc.join('|') + ')(?![a-z0-9])');
+}
+export function startsWithTestKey(str) {
+  return !!keyStartRe && keyStartRe.test(norm(str));
+}
+
 export function parseLabText(text, tests) {
+  if (!keyStartRe) configureTests(tests);
   const matchers = buildMatchers(tests);
   const byId = new Map(tests.map(t => [t.id, t]));
   const items = new Map();
   const unmatched = [];
   let section = '';
 
-  for (const rawLine of String(text).split(/\r?\n/)) {
-    const line = fixDigits(rawLine).trim();
-    if (!line) continue;
+  // Ghép dòng tên bị xuống dòng: "HCT (Thể tích khối hồng" + "42.7 % 40 - 50"
+  const rawLines = String(text).split(/\r?\n/).map(l => fixDigits(l).trim()).filter(Boolean);
+  const lines = [];
+  const used = new Set();
+  const nameOnly = l => !/\d/.test(l.replace(/^\d{1,3}[.)]?\s+/, '').replace(/(a1c|b12|ft[34]|25-oh|hdl-c|ldl-c|neu#|lym#|eos#)/ig, '')) && keyStartRe && keyStartRe.test(norm(l));
+  const valueOnly = l => /^[<>≤≥]?\s*\d/.test(l);
+  for (let i = 0; i < rawLines.length; i++) {
+    if (used.has(i)) continue;
+    const cur = rawLines[i];
+    if (nameOnly(cur)) {
+      // giá trị ở dòng kế tiếp, hoặc cách một dòng của cột bên cạnh (phiếu hai cột)
+      const j = [i + 1, i + 2].find(k => k < rawLines.length && !used.has(k) && valueOnly(rawLines[k]) && (k === i + 1 || !valueOnly(rawLines[i + 1])));
+      if (j !== undefined) { lines.push(cur + '   ' + rawLines[j]); used.add(j); continue; }
+    }
+    lines.push(cur);
+  }
+  for (const line of lines) {
     const n = norm(line);
+    // Dòng tiêu đề bảng
+    if (/(ten xet nghiem|ket qua|tri so|don vi)/.test(n) && !/\d/.test(n)) continue;
+    // Tỷ lệ % của công thức bạch cầu: không phải số lượng tuyệt đối
+    if (/(^|[^a-z])(neu|neut|lym|lymph|eos|mono|baso|ne|ly|eo)\s*%|ty le/.test(n) && !/#/.test(n)) continue;
     if (SECTION_URINE.test(n) && n.length < 80) { section = 'urine'; }
     else if (SECTION_BLOOD.test(n) && n.length < 80) { section = 'blood'; }
 
     let hit = null;
     for (const m of matchers) {
       if (m.shared && (m.urine ? section !== 'urine' : section === 'urine')) continue;
-      if (items.has(m.id)) continue;
+      if (items.has(m.id) && items.get(m.id).selected) continue;
       const r = m.re.exec(n);
       if (!r) continue;
       const end = r.index + r[0].length;

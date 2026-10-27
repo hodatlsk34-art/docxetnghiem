@@ -1,4 +1,5 @@
 import test from 'node:test';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { parseNumber, parseQual, parseLabRef, unitGuard, plausibleMax } from '../../js/validation.js';
 import { BY } from './helpers.js';
@@ -49,4 +50,15 @@ test('chặn nhầm đơn vị', () => {
 test('trần hợp lý', () => {
   assert.ok(plausibleMax(BY.glu) > 30);
   assert.equal(plausibleMax(BY.bhcg), Infinity);
+});
+
+test('phiên bản đồng bộ: sw.js, app.js, CHANGELOG', () => {
+  const read = f => fs.readFileSync(new URL('../../' + f, import.meta.url), 'utf8');
+  const sw = /const VERSION = '([\d.]+)'/.exec(read('sw.js'))[1];
+  const app = /APP_VERSION = '([\d.]+)'/.exec(read('js/app.js'))[1];
+  const log = /## ([\d.]+)/.exec(read('CHANGELOG.md'))[1];
+  assert.equal(sw, app); assert.equal(sw, log);
+  for (const f of /CORE = \[([\s\S]*?)\]/.exec(read('sw.js'))[1].match(/'\.\/[^']*'/g)) {
+    const p = f.slice(3, -1); if (p) assert.ok(fs.existsSync(new URL('../../' + p, import.meta.url)), 'thiếu ' + p);
+  }
 });

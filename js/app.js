@@ -4,11 +4,12 @@ import { h, clear, icon, svg } from './dom.js';
 import { parseNumber, parseLabRef, formatNum, QUAL_LABEL } from './validation.js';
 import { classify, bucket, evaluateRules, relatedTests, refFor, specialFor, PROFILE_GROUPS, AGE_BANDS, TRIMESTERS, ageBandFromYears, profileLabel } from './classification.js';
 import { createStore, newId } from './storage.js';
-import { parseLabText, recognizeImages } from './ocr.js';
+import { parseLabText, configureTests } from './ocr.js';
+import { extractFromFiles, fileKind, ACCEPT } from './files.js';
 import { installCard, installSteps, isStandalone } from './install.js';
 import { interpret, PANEL_MEMBERS, FORMULA_SOURCES } from './interpret.js';
 
-export const APP_VERSION = '2.3.0';
+export const APP_VERSION = '2.4.0';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -44,6 +45,7 @@ export async function start() {
     return;
   }
   BY = Object.fromEntries(D.tests.map(t => [t.id, t]));
+  configureTests(D.tests);
   let ls = null;
   try { ls = window.localStorage; } catch { ls = null; }
   store = createStore(ls, D.tests);
@@ -92,7 +94,8 @@ function render() {
   const r = route();
   const main = clear($main());
   const map = { '': screenHome, nhap: screenEnter, ketqua: screenResults, chitiet: screenDetail, tracuu: screenLookup,
-    lichsu: screenHistory, huongdan: screenGuide, caidat: screenSettings, anh: screenPhoto };
+    lichsu: screenHistory, huongdan: screenGuide, caidat: screenSettings, anh: screenPhoto,
+    'nhan-file': () => { setTimeout(screenShareReceive, 0); return h('section', { class: 'screen center-msg' }, h('p', { text: 'Đang nhận file…' })); } };
   const fn = map[r.name] || screenHome;
   main.append(fn(r.arg));
   document.querySelectorAll('.nav-item').forEach(a => {
@@ -218,30 +221,32 @@ function confirmBox(title, body, okLabel, onOk, danger = true) {
 // ---------------------------------------------------------------- ảnh phiếu
 function photoInputs() {
   const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'sr-only', id: 'in-cam', tabindex: '-1', 'aria-hidden': 'true' });
-  const gal = h('input', { type: 'file', accept: 'image/*', multiple: true, class: 'sr-only', id: 'in-gal', tabindex: '-1', 'aria-hidden': 'true' });
-  const onPick = e => { const files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)); e.target.value = ''; if (files.length) startOcr(files); };
+  const gal = h('input', { type: 'file', accept: ACCEPT, multiple: true, class: 'sr-only', id: 'in-gal', tabindex: '-1', 'aria-hidden': 'true' });
+  const onPick = e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) startImport(files); };
   cam.addEventListener('change', onPick); gal.addEventListener('change', onPick);
   return { cam, gal };
 }
 
-function startOcr(files) {
-  if (files.some(f => f.size > 25 * 1024 * 1024)) { toast('Ảnh quá lớn (trên 25 MB).', 'warn'); return; }
-  ui.ocr = { files, urls: files.map(f => URL.createObjectURL(f)), phase: 'Đang chuẩn bị…', pct: 0, status: 'running', result: null, error: null, run: Symbol() };
+export function startImport(files) {
+  const bad = files.filter(f => !fileKind(f));
+  if (bad.length) { toast(`Chưa hỗ trợ file "${bad[0].name}". Hãy dùng ảnh, PDF, Excel hoặc CSV.`, 'warn'); files = files.filter(f => fileKind(f)); if (!files.length) return; }
+  ui.ocr = { files, urls: [], phase: 'Đang chuẩn bị…', pct: 0, status: 'running', result: null, error: null, run: Symbol(),
+    kinds: [...new Set(files.map(fileKind))] };
   const run = ui.ocr.run;
   go('anh');
-  recognizeImages(files, (phase, pct) => {
+  extractFromFiles(files, (phase, pct) => {
     if (!ui.ocr || ui.ocr.run !== run) return;
     ui.ocr.phase = phase; ui.ocr.pct = pct || 0; updateOcrProgress();
-  }).then(text => {
+  }).then(res => {
     if (!ui.ocr || ui.ocr.run !== run) return;
-    const parsed = parseLabText(text, D.tests);
-    ui.ocr.status = 'review'; ui.ocr.text = text;
+    const parsed = parseLabText(res.text, D.tests);
+    Object.assign(ui.ocr, { status: 'review', text: res.text, urls: res.thumbs, methods: res.methods, notes: res.notes });
     ui.ocr.items = parsed.items.map(it => ({ ...it, existing: S.draft.values[it.id] ?? '' }));
     ui.ocr.unmatched = parsed.unmatched; ui.ocr.hints = parsed.hints;
     if (route().name === 'anh') render();
   }).catch(err => {
     if (!ui.ocr || ui.ocr.run !== run) return;
-    ui.ocr.status = 'error'; ui.ocr.error = (err && err.message) || 'Không đọc được ảnh.';
+    ui.ocr.status = 'error'; ui.ocr.error = (err && err.message) || 'Không đọc được file.';
     if (route().name === 'anh') render();
   });
 }
@@ -254,21 +259,21 @@ function updateOcrProgress() {
 function screenPhoto() {
   const o = ui.ocr;
   if (!o) { setTimeout(() => go('nhap'), 0); return h('div'); }
-  const wrap = h('section', { class: 'screen' }, topbar(o.status === 'review' ? 'Kiểm tra chỉ số đọc được' : 'Đọc ảnh phiếu', { backTo: 'nhap' }));
+  const wrap = h('section', { class: 'screen' }, topbar(o.status === 'review' ? 'Kiểm tra chỉ số đọc được' : 'Đang đọc kết quả', { backTo: 'nhap' }));
   const thumbs = h('div', { class: 'thumbs' }, o.urls.map((u, i) => h('img', { src: u, alt: `Ảnh phiếu ${i + 1}` })));
 
   if (o.status === 'running') {
     wrap.append(h('div', { class: 'card ocr-run' }, thumbs,
       h('p', { id: 'ocr-phase', class: 'strong', 'aria-live': 'polite', text: o.phase }),
       h('progress', { id: 'ocr-bar', max: '100', value: String(Math.round(o.pct * 100)) }),
-      h('p', { class: 'muted small', text: 'Ảnh được xử lý ngay trên máy của bạn, không gửi đi đâu. Lần đầu cần mạng để tải bộ nhận dạng chữ (khoảng 5 MB).' }),
+      h('p', { class: 'muted small', text: 'File được xử lý ngay trên máy của bạn, không gửi đi đâu. Lần đầu cần mạng để tải bộ đọc PDF/nhận dạng chữ.' }),
       h('button', { class: 'btn ghost', onclick: () => { ui.ocr = null; go('nhap'); } }, 'Hủy')));
     return wrap;
   }
   if (o.status === 'error') {
     wrap.append(h('div', { class: 'card center-msg' }, icon('alert', 'xl warn-c'),
-      h('h2', { text: 'Chưa đọc được ảnh' }), h('p', { text: o.error }),
-      h('div', { class: 'row-wrap' }, h('button', { class: 'btn primary', onclick: () => startOcr(o.files) }, icon('refresh'), 'Thử lại'),
+      h('h2', { text: 'Chưa đọc được file' }), h('p', { text: o.error }),
+      h('div', { class: 'row-wrap' }, h('button', { class: 'btn primary', onclick: () => startImport(o.files) }, icon('refresh'), 'Thử lại'),
         h('button', { class: 'btn ghost', onclick: () => go('nhap') }, 'Nhập tay'))));
     return wrap;
   }
@@ -281,7 +286,11 @@ function screenPhoto() {
 
   wrap.append(h('div', { class: 'card note' }, icon('shield'),
     h('p', {}, h('strong', { text: `Đọc được ${items.length} chỉ số. ` }),
-      'Nhận dạng chữ có thể sai. Hãy so từng số với phiếu gốc trước khi thêm. Mục có dấu ', h('strong', { text: '!' }), ' cần bạn xác nhận.')));
+      o.methods && o.methods.has('pdf-text') && !o.methods.has('ocr')
+        ? 'App đọc trực tiếp chữ trong file PDF nên chính xác hơn ảnh, nhưng vẫn nên so lại với phiếu. Mục có dấu '
+        : o.methods && o.methods.has('table') && !o.methods.has('ocr') ? 'Đọc từ bảng tính/văn bản. Hãy so lại với phiếu. Mục có dấu '
+        : 'Nhận dạng chữ từ ảnh có thể sai. Hãy so từng số với phiếu gốc trước khi thêm. Mục có dấu ', h('strong', { text: '!' }), ' cần bạn xác nhận.'),
+    (o.notes || []).map(n => h('p', { class: 'small', text: n }))));
 
   const hints = o.hints || {};
   const hintRow = [];
@@ -326,7 +335,7 @@ function screenPhoto() {
       h('p', { class: 'muted small', text: 'Nếu trong đó có chỉ số bạn cần, hãy thêm bằng tay ở màn hình Đọc phiếu.' }),
       h('ul', {}, o.unmatched.slice(0, 40).map(l => h('li', { text: l })))));
   }
-  wrap.append(h('details', { class: 'card raw' }, h('summary', { text: 'Xem toàn bộ chữ đọc được từ ảnh' }), h('pre', { text: o.text || '' })), thumbs);
+  wrap.append(h('details', { class: 'card raw' }, h('summary', { text: 'Xem toàn bộ chữ đọc được từ file' }), h('pre', { text: o.text || '' })), thumbs);
   wrap.append(h('div', { class: 'sticky-act' }, applyBtn));
   refreshApply(); refreshChecks();
   wrap.append(photoInputs().cam);
@@ -377,7 +386,7 @@ function ocrRow(it, onChange) {
       h('div', { class: 'ocr-head' }, groupBadge(t), h('div', { class: 'nm' }, h('strong', { text: t.short }), h('span', { class: 'muted small', text: t.name }))),
       h('div', { class: 'ocr-val' }, field, h('span', { class: 'unit', text: t.unit })),
       status, extras,
-      h('p', { class: 'src-line', text: 'Trên ảnh: ' + it.line })));
+      h('p', { class: 'src-line', text: 'Trên phiếu: ' + it.line })));
   upd();
   return row;
 }
@@ -395,7 +404,7 @@ function applyOcr() {
   }
   S.draft.sample = false;
   persist();
-  o.urls.forEach(u => URL.revokeObjectURL(u));
+  o.urls.forEach(u => { if (String(u).startsWith('blob:')) URL.revokeObjectURL(u); });
   ui.ocr = null;
   toast(`Đã thêm ${n} chỉ số từ ảnh.`);
   go('ketqua');
@@ -415,11 +424,11 @@ function screenHome() {
     installCard(),
     h('div', { class: 'card cta' },
       h('div', { class: 'cta-ic' }, icon('camera')),
-      h('div', { class: 'cta-tx' }, h('h2', { text: 'Chụp ảnh phiếu xét nghiệm' }),
-        h('p', { text: 'App tự đọc các chỉ số, bạn chỉ cần kiểm tra lại. Không phải gõ từng số.' })),
+      h('div', { class: 'cta-tx' }, h('h2', { text: 'Chụp ảnh hoặc tải file kết quả' }),
+        h('p', { text: 'Ảnh chụp, file PDF bệnh viện gửi, Excel… App tự đọc các chỉ số, bạn chỉ cần kiểm tra lại.' })),
       h('div', { class: 'cta-act' },
         h('button', { class: 'btn on-dark', onclick: () => cam.click() }, icon('camera'), 'Chụp phiếu'),
-        h('button', { class: 'btn on-dark ghost', onclick: () => gal.click() }, icon('image'), 'Chọn ảnh có sẵn')), cam, gal),
+        h('button', { class: 'btn on-dark ghost', onclick: () => gal.click() }, icon('upload'), 'Tải ảnh / PDF / Excel')), cam, gal),
     n ? h('a', { href: '#ketqua', class: 'card current' },
       h('div', {}, h('span', { class: 'eyebrow', text: 'Phiếu đang xem' }),
         h('strong', { text: `${n} chỉ số` + (out ? ` · ${out} ngoài khoảng tham chiếu` : '') })),
@@ -489,11 +498,11 @@ function screenEnter() {
   const R = results();
   const left = h('div', { class: 'col' }, profileBlock(),
     h('div', { class: 'card photo' },
-      h('div', { class: 'photo-tx' }, icon('camera', 'lg'), h('div', {}, h('strong', { text: 'Có phiếu giấy? Chụp ảnh cho nhanh' }),
-        h('span', { class: 'muted small', text: 'App đọc chữ ngay trên máy. Chụp được nhiều trang.' }))),
+      h('div', { class: 'photo-tx' }, icon('camera', 'lg'), h('div', {}, h('strong', { text: 'Chụp phiếu hoặc tải file kết quả' }),
+        h('span', { class: 'muted small', text: 'Nhận ảnh, PDF, Excel, CSV. Đọc ngay trên máy, không gửi đi đâu.' }))),
       h('div', { class: 'row-wrap' },
         h('button', { class: 'btn primary', onclick: () => cam.click() }, icon('camera'), 'Chụp phiếu'),
-        h('button', { class: 'btn ghost', onclick: () => gal.click() }, icon('image'), 'Chọn ảnh')), cam, gal));
+        h('button', { class: 'btn ghost', onclick: () => gal.click() }, icon('upload'), 'Tải file')), cam, gal));
 
   // --- tìm & thêm
   const sugg = h('ul', { class: 'sugg', role: 'listbox', id: 'sugg', hidden: true });
@@ -1023,10 +1032,18 @@ function screenGuide() {
     sec('camera', 'Chụp ảnh phiếu để app tự đọc', ul([
       'Đặt phiếu trên mặt phẳng, đủ sáng, không bị bóng tay hay lóa đèn.',
       'Chụp thẳng từ trên xuống, để bảng kết quả chiếm gần hết khung hình.',
-      'Phiếu nhiều trang: chọn "Chọn ảnh" và chọn nhiều ảnh cùng lúc.',
+      'Phiếu nhiều trang: bấm "Tải file" và chọn nhiều ảnh cùng lúc.',
       'Sau khi đọc, so từng số với phiếu gốc. Mục có dấu ! cần bạn xác nhận (ví dụ ảnh mờ làm mất dấu thập phân).',
       'App không tự đổi đơn vị. Nếu phiếu ghi mg/dL trong khi app dùng mmol/L, app sẽ báo để bạn kiểm tra.'
     ]), h('p', { class: 'small muted', text: 'Ảnh được xử lý ngay trên máy. Lần đầu dùng cần mạng để tải bộ nhận dạng chữ (khoảng 5 MB) từ cdn.jsdelivr.net.' })),
+    sec('upload', 'Tải file kết quả', ul([
+      'File PDF bệnh viện gửi qua Zalo, email: bấm "Tải ảnh / PDF / Excel" và chọn file. App đọc trực tiếp chữ trong PDF nên chính xác hơn ảnh.',
+      'PDF dạng scan (chụp lại giấy) được tự chuyển sang nhận dạng chữ như ảnh.',
+      'Hỗ trợ: PDF (tối đa 10 trang, 30 MB), ảnh, Excel (.xlsx, .xls), CSV, TXT. Chọn được nhiều file cùng lúc.',
+      'Trên Android đã cài app: trong Zalo, nhấn giữ file → Chia sẻ → chọn "Xét nghiệm" để mở thẳng vào app.',
+      'Trên máy tính: kéo thả file vào cửa sổ app.',
+      'File có mật khẩu: hãy mở bằng mật khẩu và lưu lại bản không khóa trước.'
+    ])),
     sec('doc', 'Nhập tay', ul([
       'Chọn giới tính và đối tượng trước: nhiều chỉ số có ngưỡng khác nhau giữa nam và nữ.',
       'Trẻ em: chọn thêm nhóm tuổi. Thai phụ: chọn giai đoạn thai kỳ. App áp dụng ngưỡng riêng cho Hb, mỡ máu, đường huyết, HbA1c, TSH; các chỉ số khác cần ngưỡng in trên phiếu.',
@@ -1058,30 +1075,89 @@ function screenSettings() {
     h('div', { class: 'card note' }, icon('shield'), h('p', { text: 'Dữ liệu được lưu trên trình duyệt hiện tại. App không có máy chủ, không dùng công cụ theo dõi người dùng.' })));
 }
 
-// ---------------------------------------------------------------- service worker
-let waitingSW = null;
+// ---------------------------------------------------------------- service worker: tự cập nhật
+const UPDATED_KEY = 'dpxn-updated-to';
+let pendingReload = false;
+function safeToReload() {
+  if (ui.ocr && ui.ocr.status === 'running') return false;            // đang đọc file/ảnh
+  if (route().name === 'anh') return false;                           // đang xác nhận chỉ số đọc được
+  if (document.querySelector('.modal-wrap')) return false;            // đang mở hộp thoại
+  const a = document.activeElement;
+  if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) && document.visibilityState === 'visible') return false; // đang gõ
+  return true;
+}
+function reloadForUpdate(version) {
+  try { sessionStorage.setItem(UPDATED_KEY, version || '1'); } catch { /* bỏ qua */ }
+  location.reload();
+}
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('sw.js').then(reg => {
-    const offer = sw => { waitingSW = sw; toast('Đã có phiên bản mới của app.', 'info', { label: 'Cập nhật', run: () => sw.postMessage('skipWaiting') }); };
-    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
-    reg.addEventListener('updatefound', () => {
-      const nw = reg.installing;
-      nw && nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) offer(nw); });
-    });
-    setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
-  }).catch(() => {});
-  // Chỉ tải lại khi người dùng bấm "Cập nhật" (lần cài đầu tiên không tải lại).
+  // Báo đã cập nhật sau khi tải lại
+  try {
+    const v = sessionStorage.getItem(UPDATED_KEY);
+    if (v) { sessionStorage.removeItem(UPDATED_KEY); setTimeout(() => toast(`Đã cập nhật lên phiên bản mới${v !== '1' ? ' ' + v : ''}.`), 600); }
+  } catch { /* bỏ qua */ }
+
   const hadController = !!navigator.serviceWorker.controller;
-  let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloading) { reloading = true; location.reload(); } });
+  let newVersion = '';
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'updated') newVersion = e.data.version; });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;          // lần cài đầu tiên: không cần tải lại
+    pendingReload = true;                 // nếu chưa an toàn: tải lại khi người dùng chuyển màn hình hoặc rời app
+    setTimeout(() => { if (safeToReload()) reloadForUpdate(newVersion); }, 400); // chờ nhận số phiên bản
+  });
+  const tryPending = () => { if (pendingReload && safeToReload()) reloadForUpdate(newVersion); };
+  window.addEventListener('hashchange', tryPending);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') tryPending(); });
+
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    let last = Date.now();
+    const check = () => { if (navigator.onLine) { last = Date.now(); reg.update().catch(() => {}); } };
+    // App đã cài thường chạy nền lâu ngày: kiểm tra mỗi khi mở lại app và mỗi 30 phút
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - last > 60 * 1000) check(); });
+    window.addEventListener('online', check);
+    setInterval(check, 30 * 60 * 1000);
+    if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+  }).catch(() => {});
 }
 function checkUpdate() {
-  if (!('serviceWorker' in navigator)) { toast('Trình duyệt không hỗ trợ cập nhật ngoại tuyến.'); return; }
+  if (!('serviceWorker' in navigator)) { toast('Trình duyệt không hỗ trợ cập nhật tự động.'); return; }
   navigator.serviceWorker.getRegistration().then(reg => {
     if (!reg) { toast('Chưa cài chế độ ngoại tuyến.'); return; }
-    if (waitingSW) { waitingSW.postMessage('skipWaiting'); return; }
-    reg.update().then(() => { setTimeout(() => { if (!reg.installing && !reg.waiting) toast('Bạn đang dùng bản mới nhất.'); }, 1500); })
-      .catch(() => toast('Không kiểm tra được — có thể đang ngoại tuyến.', 'warn'));
+    toast('Đang kiểm tra…');
+    reg.update().then(() => {
+      setTimeout(() => { if (!reg.installing && !reg.waiting) toast(`Bạn đang dùng bản mới nhất (${APP_VERSION}).`); }, 2000);
+    }).catch(() => toast('Không kiểm tra được — có thể đang ngoại tuyến.', 'warn'));
+  });
+}
+
+// ---------------------------------------------------------------- nhận file chia sẻ & kéo thả
+async function screenShareReceive() {
+  try {
+    const cache = await caches.open('dpxn-share');
+    const keys = await cache.keys();
+    const files = [];
+    for (const k of keys) {
+      const r = await cache.match(k);
+      const blob = await r.blob();
+      files.push(new File([blob], decodeURIComponent(r.headers.get('X-Name') || 'file'), { type: blob.type }));
+      await cache.delete(k);
+    }
+    if (files.length) { startImport(files); return; }
+  } catch { /* bỏ qua */ }
+  toast('Không nhận được file chia sẻ. Hãy thử lại hoặc bấm "Tải file".', 'warn');
+  go('nhap');
+}
+export function setupDrop() {
+  let depth = 0;
+  const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+  window.addEventListener('dragenter', e => { if (!hasFiles(e)) return; depth++; document.body.classList.add('dragging'); });
+  window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) document.body.classList.remove('dragging'); });
+  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth = 0; document.body.classList.remove('dragging');
+    const files = [...e.dataTransfer.files];
+    if (files.length && D) startImport(files);
   });
 }
