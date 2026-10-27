@@ -1,0 +1,15 @@
+{
+  "name": "docxetnghiem",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Đọc Phiếu Xét Nghiệm — PWA giải thích kết quả xét nghiệm (tham khảo, không chẩn đoán)",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.0"
+  }
+}
