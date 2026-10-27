@@ -1,0 +1,188 @@
+// Kiểm thử đầu-cuối bằng Playwright (Chromium). Chạy: npm run test:e2e
+// Tùy chọn: TESSERACT_LOCAL=/đường/dẫn/node_modules để phục vụ bộ nhận dạng chữ từ máy thay vì cdn.jsdelivr.net.
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+
+const ROOT = path.resolve(new URL('../../', import.meta.url).pathname);
+const OUT = path.join(ROOT, 'tests/e2e/out');
+fs.mkdirSync(OUT, { recursive: true });
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webmanifest': 'application/manifest+json', '.wasm': 'application/wasm' };
+const BASE = '/docxetnghiem/'; // giống đường dẫn con của GitHub Pages
+const server = http.createServer((req, res) => {
+  let u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  if (!u.startsWith(BASE)) { res.writeHead(404); return res.end(); }
+  let f = path.join(ROOT, u.slice(BASE.length));
+  if (fs.existsSync(f) && fs.statSync(f).isDirectory()) f = path.join(f, 'index.html');
+  if (!f.startsWith(ROOT) || !fs.existsSync(f)) { res.writeHead(404); return res.end('nf'); }
+  res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' });
+  fs.createReadStream(f).pipe(res);
+}).listen(0);
+const URLB = `http://localhost:${server.address().port}${BASE}`;
+
+const results = []; let failed = 0;
+const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? ' — ' + extra : ''}`); if (!ok) failed++; };
+
+const browser = await chromium.launch();
+async function newPage(width = 375, height = 812, opts = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, colorScheme: opts.dark ? 'dark' : 'light', serviceWorkers: opts.sw ? 'allow' : 'block' });
+  const local = process.env.TESSERACT_LOCAL;
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  if (local) {
+    await ctx.route(/cdn\.jsdelivr\.net\/npm\//, async route => {
+      const p = new URL(route.request().url()).pathname.replace(/^\/npm\//, '');
+      const m = /^((?:@[^/]+\/)?[^@/]+)(?:@v?[^/]+)?\/(.*)$/.exec(p);
+      const file = path.join(local, m[1], m[2]);
+      if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: 'nf ' + file });
+      route.fulfill({ status: 200, body: fs.readFileSync(file), headers: { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' } });
+    });
+  }
+  const page = await ctx.newPage();
+  page.errors = [];
+  page.on('pageerror', e => page.errors.push(e.message));
+  page.on('console', m => { if (m.type() === 'error' && !/fonts|ERR_FAILED/.test(m.text())) page.errors.push(m.text()); });
+  page.on('dialog', d => { page.errors.push('dialog: ' + d.message()); d.dismiss(); });
+  return { ctx, page };
+}
+const noHScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png'), fullPage: true });
+
+try {
+  // 1. Trang chủ + các màn hình, điện thoại 320px & 375px
+  for (const w of [320, 375]) {
+    const { page, ctx } = await newPage(w, 760);
+    await page.goto(URLB);
+    await page.waitForSelector('.hero');
+    check(`trang chủ hiển thị (${w}px)`, await page.isVisible('text=Chụp ảnh phiếu xét nghiệm'));
+    for (const r of ['', 'nhap', 'tracuu', 'lichsu', 'huongdan', 'caidat', 'chitiet/hgb']) {
+      await page.goto(URLB + '#' + r); await page.waitForTimeout(120);
+      check(`không cuộn ngang #${r || 'home'} (${w}px)`, await noHScroll(page));
+    }
+    if (w === 375) { await page.goto(URLB); await page.waitForSelector('.hero'); await shot(page, '01-trang-chu'); }
+    check(`không lỗi JS (${w}px)`, page.errors.length === 0, page.errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2. Nhập tay + XSS + xác thực
+  {
+    const { page, ctx } = await newPage();
+    await page.goto(URLB + '#nhap'); await page.waitForSelector('.profile');
+    await page.click('text=Nữ');
+    await page.fill('#add-q', 'hgb'); await page.press('#add-q', 'Enter');
+    await page.waitForSelector('#in-hgb');
+    const xss = '<img src=x onerror="window.__xss=1">';
+    await page.fill('#in-hgb', xss);
+    check('XSS trong ô nhập không thực thi', await page.evaluate(() => !window.__xss && !document.querySelector('#main img[src="x"]')));
+    check('giá trị sai định dạng bị báo lỗi', await page.isVisible('#st-hgb .err'));
+    await page.fill('#in-hgb', '10,5');
+    check('báo nhầm đơn vị g/dL', (await page.textContent('#st-hgb')).includes('g/dL'));
+    await page.fill('#in-hgb', '105');
+    check('HGB 105 nữ → thấp', (await page.textContent('#st-hgb')).includes('Thấp'));
+    await page.fill('#add-q', 'men gan'); await page.waitForSelector('#sugg:not([hidden])');
+    await page.press('#add-q', 'Enter');
+    await page.click('text=Tải ví dụ');
+    await page.waitForTimeout(200);
+    await page.click('.modal .btn.primary').catch(() => {});
+    await page.waitForSelector('#in-ferritin');
+    check('không cuộn ngang #nhap có dữ liệu', await noHScroll(page));
+    await shot(page, '02-nhap');
+    await page.click('.sticky-act .btn');
+    await page.waitForSelector('.summary');
+    check('tổ hợp thiếu sắt xuất hiện', await page.isVisible('text=Gợi ý thiếu máu do thiếu sắt'));
+    check('không có câu "Phù hợp đái tháo đường"', !(await page.isVisible('text=Phù hợp đái tháo đường')));
+    check('không cuộn ngang #ketqua có dữ liệu', await noHScroll(page));
+    await shot(page, '03-ket-qua');
+    await page.click('text=Lưu vào lịch sử');
+    await page.click('.res-row >> nth=0');
+    await page.waitForSelector('.det-head');
+    await shot(page, '04-chi-tiet');
+    await page.click('role=tab[name="Liên quan"]');
+    check('tab Liên quan', await page.isVisible('.tabpanel .res-row'));
+    check('không lỗi JS (luồng nhập)', page.errors.length === 0, page.errors.join(' | '));
+    // lịch sử: lưu thêm 1 lần với giá trị khác để so sánh
+    await page.goto(URLB + '#nhap'); await page.fill('#in-hgb', '118');
+    await page.goto(URLB + '#ketqua'); await page.click('text=Lưu vào lịch sử');
+    await page.goto(URLB + '#lichsu'); await page.waitForSelector('.compare');
+    check('so sánh có biểu đồ', await page.isVisible('.spark'));
+    await shot(page, '06-lich-su');
+    await page.goto(URLB + '#tracuu'); await page.fill('#lk-q', 'ALT'); await page.waitForTimeout(100);
+    check('tra cứu ALT', (await page.textContent('.list')).includes('ALT'));
+    await shot(page, '05-tra-cuu');
+    await ctx.close();
+  }
+
+  // 3. localStorage độc hại / hỏng
+  {
+    const { page, ctx } = await newPage();
+    await page.goto(URLB); await page.waitForSelector('.hero');
+    await page.evaluate(() => localStorage.setItem('dpxn-v2', JSON.stringify({ profile: { sex: '<svg onload=alert(1)>' }, draft: { values: { glu: '<img src=x onerror=window.__xss=1>', u_nit: '"><script>window.__xss=1</script>' }, order: ['glu', 'u_nit', '<b>'] }, history: [{ id: 'x1', at: '2026-01-01T00:00:00Z', values: { glu: '<svg/onload=window.__xss=1>' } }] })));
+    await page.goto(URLB + '#nhap'); await page.reload(); await page.waitForSelector('.profile');
+    await page.goto(URLB + '#ketqua'); await page.waitForTimeout(150);
+    await page.goto(URLB + '#lichsu'); await page.waitForTimeout(150);
+    check('dữ liệu lưu độc hại không thực thi', await page.evaluate(() => !window.__xss && !document.querySelector('#main script, #main img[src="x"]')));
+    await page.evaluate(() => localStorage.setItem('dpxn-v2', '{hỏng'));
+    await page.goto(URLB + '#'); await page.reload(); await page.waitForSelector('.hero');
+    check('JSON hỏng → thông báo, app vẫn chạy', await page.isVisible('.toast'));
+    check('không lỗi JS (dữ liệu hỏng)', page.errors.length === 0, page.errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 4. Chụp ảnh phiếu → OCR → xác nhận → kết quả
+  if (process.env.TESSERACT_LOCAL || process.env.OCR_NETWORK) {
+    const { page, ctx } = await newPage();
+    await page.goto(URLB + '#nhap'); await page.waitForSelector('#in-gal', { state: 'attached' });
+    await page.setInputFiles('#in-gal', path.join(ROOT, 'tests/fixtures/phieu-mau.jpg'));
+    await page.waitForSelector('.ocr-run');
+    await shot(page, '07-dang-doc-anh');
+    await page.waitForSelector('.ocr-list, .center-msg', { timeout: 180000 });
+    const n = await page.locator('.ocr-row').count();
+    check('OCR đọc được ≥ 18 chỉ số từ ảnh mẫu', n >= 18, `${n} chỉ số`);
+    check('không cuộn ngang màn hình xác nhận ảnh', await noHScroll(page));
+    await shot(page, '08-xac-nhan-anh');
+    const alts = page.locator('.alts .chip');
+    if (await alts.count()) await alts.first().click();
+    const btnText = await page.textContent('.sticky-act .btn');
+    await page.click('.sticky-act .btn');
+    await page.waitForSelector('.summary');
+    check('áp dụng chỉ số từ ảnh', /Thêm \d+/.test(btnText), btnText);
+    await shot(page, '09-ket-qua-tu-anh');
+    check('không lỗi JS (OCR)', page.errors.length === 0, page.errors.join(' | '));
+    await ctx.close();
+  } else results.push('SKIP  OCR (đặt TESSERACT_LOCAL hoặc OCR_NETWORK=1)');
+
+  // 5. Desktop + chế độ tối
+  {
+    const { page, ctx } = await newPage(1280, 860, { dark: true });
+    await page.goto(URLB); await page.waitForSelector('.hero');
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(URLB + '#nhap'); await page.click('text=Tải ví dụ'); await page.goto(URLB + '#ketqua'); await page.waitForSelector('.summary');
+    check('desktop không cuộn ngang', await noHScroll(page));
+    await shot(page, '10-desktop-toi');
+    await ctx.close();
+  }
+
+  // 6. PWA: service worker, ngoại tuyến
+  {
+    const { page, ctx } = await newPage(375, 760, { sw: true });
+    await page.goto(URLB); await page.waitForSelector('.hero');
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload(); await page.waitForSelector('.hero');
+    await ctx.setOffline(true);
+    await page.reload(); await page.waitForSelector('.hero', { timeout: 8000 }).catch(() => {});
+    check('mở lại khi ngoại tuyến', await page.isVisible('.hero'));
+    check('hiện thông báo ngoại tuyến', await page.isVisible('#offline'));
+    const manifestOk = await page.evaluate(async () => { const m = await (await fetch('manifest.webmanifest')).json(); return m.icons.length >= 3 && m.start_url === './'; });
+    check('manifest hợp lệ (đường dẫn con)', manifestOk);
+    await ctx.close();
+  }
+} catch (e) {
+  check('chạy kịch bản', false, e.stack);
+} finally {
+  await browser.close(); server.close();
+  console.log(results.join('\n'));
+  console.log(`\n${results.filter(r => r.startsWith('PASS')).length} đạt, ${failed} lỗi. Ảnh chụp: tests/e2e/out/`);
+  process.exit(failed ? 1 : 0);
+}
