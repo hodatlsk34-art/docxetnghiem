@@ -8,8 +8,9 @@ import { parseLabText, configureTests } from './ocr.js';
 import { extractFromFiles, fileKind, ACCEPT } from './files.js';
 import { installCard, installSteps, isStandalone } from './install.js';
 import { interpret, PANEL_MEMBERS, FORMULA_SOURCES } from './interpret.js';
+import { overallSummary, SUMMARY_SOURCES } from './summary.js';
 
-export const APP_VERSION = '2.4.0';
+export const APP_VERSION = '2.5.0';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -694,7 +695,9 @@ function screenResults(arg, snapshot) {
     h('p', { text: 'Nếu số trên phiếu đúng như vậy, hãy liên hệ ngay bác sĩ hoặc cơ sở y tế nơi làm xét nghiệm. Nếu có triệu chứng nặng (khó thở, đau ngực, lơ mơ, co giật, chảy máu nhiều), gọi cấp cứu 115.' })) : null;
 
   const IP = interpret(R, BY, src.profile, src.labRefs);
-  const rulesBox = linkedBlock(IP, src);
+  const OS = overallSummary(R, IP, src.profile, D.tests.length);
+  const rulesBox = linkedBlock(IP, src, OS);
+  const overall = overallCard(OS);
   // bộ lọc + danh sách
   const counts = { all: ids.length, in: cnt.in, out: cnt.out + cnt.crit, na: cnt.unclassified };
   const match = id => ui.filter === 'all' || (ui.filter === 'in' && bucket(R[id]) === 'in') || (ui.filter === 'out' && ['out', 'crit'].includes(bucket(R[id]))) || (ui.filter === 'na' && bucket(R[id]) === 'unclassified');
@@ -735,7 +738,7 @@ function screenResults(arg, snapshot) {
   const printHead = h('div', { class: 'print-only' }, h('h1', { text: 'Đọc Phiếu Xét Nghiệm — Bản tóm tắt tham khảo' }),
     h('p', { text: `${fmtDate(when)} · ${prof}. Không phải kết quả xét nghiệm chính thức và không thay thế chẩn đoán của bác sĩ.` }));
   wrap.append(printHead, h('div', { class: 'two-col' },
-    h('div', { class: 'col' }, summary, critBox, IP.checks.length ? checksBox(IP.checks) : null, rulesBox),
+    h('div', { class: 'col' }, overall, critBox, IP.checks.length ? checksBox(IP.checks) : null, summary, rulesBox),
     h('div', { class: 'col' }, filters, list, actions)));
   return wrap;
 }
@@ -750,7 +753,40 @@ function checksBox(checks) {
     h('ul', {}, checks.map(c => h('li', {}, h('span', { class: 'muted small', text: c.panel + ': ' }), c.text))),
     h('p', { class: 'small', text: 'Hãy so lại với phiếu gốc. Phần đọc liên kết bên dưới có thể chưa chính xác cho đến khi sửa.' }));
 }
-function linkedBlock(IP, src) {
+function overallCard(OS) {
+  const box = h('div', { class: 'card overall lv-' + OS.urgency.level },
+    h('span', { class: 'eyebrow', text: 'Nhận định tổng quát' }),
+    h('div', { class: 'ov-head' }, levelPill(OS.urgency.level === 'ok' ? 'ok' : OS.urgency.level), h('strong', { class: 'ov-label', text: OS.urgency.label })),
+    h('p', { text: OS.urgency.text }),
+    h('p', { class: 'small muted', text: OS.scope }));
+  if (OS.problems.length) {
+    box.append(h('h3', { text: 'Vấn đề chính, xếp theo mức độ' }),
+      h('ol', { class: 'ov-list' }, OS.problems.slice(0, 6).map(pr => h('li', { class: 'lv-' + pr.level },
+        h('strong', { text: pr.title }), h('span', { class: 'small muted', text: ' · ' + pr.panel }), h('p', { class: 'small', text: pr.detail })))));
+  }
+  if (OS.links.length) {
+    box.append(h('h3', { text: 'Liên quan giữa các nhóm' }),
+      ...OS.links.map(l => h('div', { class: 'finding lv-' + l.level },
+        h('span', { class: 'fd-g', 'aria-hidden': 'true', text: PILL_GLYPH[l.level] || 'i' }),
+        h('div', {}, h('strong', { text: l.title }), h('p', { class: 'small', text: l.detail }),
+          l.source ? h('p', { class: 'src small', text: 'Căn cứ: ' + SUMMARY_SOURCES[l.source] }) : null))));
+  }
+  if (OS.reassure.length) {
+    box.append(h('h3', { text: 'Điều đáng yên tâm' }), h('ul', { class: 'ov-ok' }, OS.reassure.slice(0, 8).map(t => h('li', {}, icon('check'), h('span', { text: t })))));
+  }
+  if (OS.specialties.length) {
+    box.append(h('h3', { text: 'Chuyên khoa có thể cần khám' }), h('div', { class: 'chips' }, OS.specialties.map(sp => h('span', { class: 'tag spec', text: sp }))));
+  }
+  if (OS.lifestyle.length) {
+    box.append(h('h3', { text: 'Điều bạn có thể làm ngay' }), h('ul', { class: 'small' }, OS.lifestyle.map(t => h('li', { text: t }))),
+      h('p', { class: 'src small', text: 'Lời khuyên chung về lối sống, không thay thế hướng dẫn điều trị. ' + (OS.lifestyle.some(t => /150–300/.test(t)) ? SUMMARY_SOURCES['who-pa'] : '') }));
+  }
+  box.append(h('details', { class: 'ask' }, h('summary', { text: `Câu hỏi nên hỏi bác sĩ (${OS.ask.length})` }), h('ol', { class: 'small' }, OS.ask.map(q => h('li', { text: q })))));
+  box.append(h('span', { class: 'tag', text: 'Nhận định tự động, chưa được chuyên gia rà soát — không thay thế chẩn đoán của bác sĩ' }));
+  return box;
+}
+
+function linkedBlock(IP, src, OS) {
   const box = h('div', { class: 'card linked' },
     h('h2', { class: 'sec', text: 'Đọc liên kết theo nhóm' }),
     h('p', { class: 'small muted', text: 'App đọc các chỉ số liên quan cùng nhau theo từng nhóm cơ quan, tính thêm các tỷ lệ thường dùng và kiểm tra số liệu có khớp nhau không.' }));
@@ -758,6 +794,8 @@ function linkedBlock(IP, src) {
   for (const p of IP.panels) {
     const open = ['warn', 'bad', 'crit'].includes(p.level);
     const body = h('div', { class: 'pn-body' });
+    const qa = OS && OS.assess[p.id];
+    if (qa && qa.length) body.append(h('dl', { class: 'qa' }, qa.map(x => [h('dt', { text: x.q }), h('dd', { class: 'lv-' + x.level }, h('span', { class: 'fd-g sm', 'aria-hidden': 'true', text: PILL_GLYPH[x.level] || '•' }), h('span', { text: x.a }))])));
     p.findings.forEach(f => body.append(h('div', { class: 'finding lv-' + f.level },
       h('span', { class: 'fd-g', 'aria-hidden': 'true', text: PILL_GLYPH[f.level === 'info' ? 'info' : f.level] || '•' }),
       h('div', {}, h('strong', { text: f.title }), h('p', { class: 'small', text: f.detail }),

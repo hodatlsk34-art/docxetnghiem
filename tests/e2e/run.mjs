@@ -96,6 +96,8 @@ try {
     await page.click('.sticky-act .btn');
     await page.waitForSelector('.summary');
     check('đọc liên kết: nhóm thiếu máu → gợi ý thiếu sắt', await page.isVisible('.panel >> text=Gợi ý thiếu sắt'));
+    check('nhận định tổng quát hiển thị', await page.isVisible('.overall >> text=Nhận định tổng quát'));
+    check('nhận định nhóm dạng hỏi–đáp', await page.isVisible('.qa >> text=Có thiếu máu không?'));
     check('đọc liên kết: có chỉ số tính thêm', await page.isVisible('text=Non-HDL cholesterol'));
     check('không có câu "Phù hợp đái tháo đường"', !(await page.isVisible('text=Phù hợp đái tháo đường')));
     check('không cuộn ngang #ketqua có dữ liệu', await noHScroll(page));

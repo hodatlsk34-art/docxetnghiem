@@ -533,3 +533,29 @@ body.dragging::after {
   display: grid; place-items: center; border: 3px dashed var(--primary); border-radius: 18px;
   background: color-mix(in srgb, var(--bg) 88%, transparent); color: var(--primary-ink); font-weight: 700; font-size: 1.2rem; pointer-events: none;
 }
+
+/* ---------- nhận định tổng quát ---------- */
+.overall { gap: 10px; border-width: 2px; }
+.overall.lv-crit { border-color: var(--crit); background: var(--crit-soft); }
+.overall.lv-bad { border-color: var(--bad); }
+.overall.lv-warn { border-color: var(--warn); }
+.overall.lv-ok { border-color: var(--ok); }
+.overall h3 { font-size: .98rem; margin-top: 6px; }
+.ov-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ov-label { font-size: 1.2rem; }
+.ov-list { display: flex; flex-direction: column; gap: 8px; padding-left: 22px; }
+.ov-list li::marker { font-weight: 700; }
+.ov-list li.lv-crit::marker { color: var(--crit); } .ov-list li.lv-bad::marker { color: var(--bad); } .ov-list li.lv-warn::marker { color: var(--warn); }
+.ov-ok { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.ov-ok li { display: flex; gap: 8px; align-items: flex-start; }
+.ov-ok .ic { color: var(--ok); width: 18px; height: 18px; margin-top: 2px; }
+.tag.spec { background: var(--g-bio-soft); color: var(--g-bio); font-size: .84rem; padding: 5px 12px; }
+.ask summary { cursor: pointer; font-weight: 700; color: var(--primary); padding: 4px 0; }
+.ask ol { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.qa { margin: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 6px 12px; padding: 10px; border-radius: 10px; background: var(--sunk); font-size: .9rem; }
+.qa dt { font-weight: 600; color: var(--muted); }
+.qa dd { margin: 0; display: flex; gap: 6px; align-items: flex-start; }
+.fd-g.sm { width: 18px; height: 18px; font-size: .66rem; margin-top: 2px; }
+.qa dd.lv-ok .fd-g { color: var(--ok); } .qa dd.lv-warn .fd-g { color: var(--warn); } .qa dd.lv-bad .fd-g { color: var(--bad); } .qa dd.lv-crit .fd-g { color: var(--crit); }
+@media (max-width: 480px) { .qa { grid-template-columns: 1fr; gap: 2px; } .qa dd { margin-bottom: 8px; } }
+@media print { .ask { display: block; } .ask[open] summary, .ask summary { list-style: none; } }

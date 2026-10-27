@@ -1,5 +1,11 @@
 # Nhật ký thay đổi
 
+## 2.5.0 — 27/10/2026
+- **Nhận định tổng quát** đầu màn Kết quả: mức cần khám (khẩn / khám sớm / theo dõi / chưa thấy bất thường), vấn đề chính xếp theo mức độ, liên quan giữa các nhóm, điều đáng yên tâm, chuyên khoa có thể cần khám, lời khuyên lối sống chung, câu hỏi nên hỏi bác sĩ.
+- **Nhận định từng nhóm dạng hỏi–đáp** (ví dụ "Có thiếu máu không? — Có, mức vừa theo WHO").
+- Đọc chéo giữa các nhóm: hội chứng chuyển hóa (AHA/NHLBI 2005), gan nhiễm mỡ liên quan chuyển hóa, nhiều yếu tố nguy cơ tim mạch, thiếu máu do viêm, thiếu nước, suy giáp – mỡ máu, thiếu máu – bệnh thận…
+- Phân mức thiếu máu nhẹ/vừa/nặng theo WHO cho người lớn, trẻ em, thai phụ.
+
 ## 2.4.0 — 27/10/2026
 - **Tải file kết quả**: PDF bệnh viện gửi (đọc trực tiếp chữ, kể cả phiếu in hai cột và tên xét nghiệm xuống dòng), PDF dạng scan (tự nhận dạng chữ), ảnh, Excel, CSV, TXT; chọn nhiều file; kéo thả trên máy tính.
 - **Chia sẻ file từ Zalo/Gmail/Tệp vào app** (Android, app đã cài).
