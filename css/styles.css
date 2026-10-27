@@ -463,3 +463,32 @@ ul { margin: 0; padding-left: 20px; }
   .res-row { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* ---------- cài app ---------- */
+.install { border: 1.5px solid var(--m-doc); background: var(--m-doc-soft); gap: 12px; }
+.inst-head { display: flex; align-items: center; gap: 12px; }
+.inst-head > div { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.inst-head strong { color: var(--m-doc-ink); font-size: 1.02rem; }
+.inst-logo { width: 44px; height: 44px; border-radius: 12px; flex: none; }
+.inst-body { display: flex; flex-direction: column; gap: 10px; }
+.steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.steps li { display: flex; gap: 10px; align-items: flex-start; font-size: .94rem; }
+.st-n { width: 24px; height: 24px; border-radius: 50%; background: var(--m-doc); color: #fff; font-size: .8rem; font-weight: 700; display: grid; place-items: center; flex: none; }
+@media (prefers-color-scheme: dark) { .st-n { color: #0B1A20; } }
+.kbd { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-weight: 700; white-space: nowrap; }
+.ic-kbd { padding: 1px 5px; vertical-align: middle; }
+.ic-kbd .ic { width: 16px; height: 16px; color: var(--m-doc); }
+
+/* ---------- cảm giác như ứng dụng ---------- */
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }
+button, a, .chip, .nav-item, .tile, .res-row { touch-action: manipulation; }
+.bottom-nav, .btn, .chip, .tab, .seg-btn, .tile, .topbar { -webkit-user-select: none; user-select: none; }
+.btn:active, .tile:active, .res-row:active, .chip:active, .nav-item:active { transform: scale(.98); }
+@media (prefers-reduced-motion: reduce) { .btn:active, .tile:active, .res-row:active, .chip:active, .nav-item:active { transform: none; } }
+html.standalone .topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 12; background: var(--bg); margin: 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding: 0 max(16px, env(safe-area-inset-left, 0px)); }
+html.standalone body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 13; }
+@media (prefers-reduced-motion: no-preference) {
+  .screen { animation: screen-in .18s ease-out; }
+  @keyframes screen-in { from { opacity: .4; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}

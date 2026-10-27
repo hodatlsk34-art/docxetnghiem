@@ -3,11 +3,11 @@
 // - Biểu tượng, phông chữ: dùng bản đã lưu trước.
 // - Bộ nhận dạng chữ (cdn.jsdelivr.net): để trình duyệt và Tesseract tự lưu, không lưu trùng ở đây.
 // - Chỉ xóa cache có tiền tố "dpxn-" của chính app.
-const VERSION = '2.0.1';
+const VERSION = '2.1.0';
 const CACHE = 'dpxn-' + VERSION;
 const CORE = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',
-  './js/main.js', './js/app.js', './js/dom.js', './js/validation.js', './js/classification.js', './js/storage.js', './js/ocr.js',
+  './js/main.js', './js/app.js', './js/dom.js', './js/validation.js', './js/classification.js', './js/storage.js', './js/ocr.js', './js/install.js',
   './data/tests.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 

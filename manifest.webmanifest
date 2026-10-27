@@ -53,5 +53,34 @@
   "health",
   "medical",
   "education"
+ ],
+ "display_override": [
+  "standalone",
+  "minimal-ui"
+ ],
+ "orientation": "portrait",
+ "prefer_related_applications": false,
+ "screenshots": [
+  {
+   "src": "screenshots/trang-chu.png",
+   "sizes": "750x1624",
+   "type": "image/png",
+   "form_factor": "narrow",
+   "label": "Chụp ảnh phiếu, app tự đọc chỉ số"
+  },
+  {
+   "src": "screenshots/ket-qua.png",
+   "sizes": "750x1624",
+   "type": "image/png",
+   "form_factor": "narrow",
+   "label": "Tổng quan kết quả và đọc kết hợp"
+  },
+  {
+   "src": "screenshots/chi-tiet.png",
+   "sizes": "750x1624",
+   "type": "image/png",
+   "form_factor": "narrow",
+   "label": "Giải thích từng chỉ số"
+  }
  ]
 }
