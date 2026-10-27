@@ -14,6 +14,53 @@ export const PROFILE_GROUPS = {
   child: 'Trẻ em (dưới 18 tuổi)',
   pregnant: 'Đang mang thai'
 };
+export const AGE_BANDS = [
+  ['lt6m', 'Dưới 6 tháng'], ['6-23m', '6–23 tháng'], ['2-4y', '2–4 tuổi'], ['5-9y', '5–9 tuổi'],
+  ['10-11y', '10–11 tuổi'], ['12-14y', '12–14 tuổi'], ['15-17y', '15–17 tuổi']
+];
+export const TRIMESTERS = { 1: '3 tháng đầu (đến tuần 13)', 2: '3 tháng giữa (tuần 14–27)', 3: '3 tháng cuối (từ tuần 28)' };
+const AGE_LABEL = Object.fromEntries(AGE_BANDS);
+
+export function ageBandFromYears(y) {
+  if (!Number.isFinite(y) || y < 0) return '';
+  if (y < 0.5) return 'lt6m'; if (y < 2) return '6-23m'; if (y < 5) return '2-4y'; if (y < 10) return '5-9y';
+  if (y < 12) return '10-11y'; if (y < 15) return '12-14y'; if (y < 18) return '15-17y';
+  return '';
+}
+
+/** Mô tả ngắn đối tượng, ví dụ "Trẻ em 5–9 tuổi", "Mang thai 3 tháng giữa". */
+export function profileLabel(profile = {}) {
+  if (profile.group === 'child') return 'Trẻ em' + (profile.ageBand ? ' ' + AGE_LABEL[profile.ageBand] : ' (chưa chọn tuổi)');
+  if (profile.group === 'pregnant') return 'Mang thai' + (profile.trimester ? ' ' + TRIMESTERS[profile.trimester].split(' (')[0] : ' (chưa chọn giai đoạn)');
+  return 'Người lớn';
+}
+
+/**
+ * Ngưỡng riêng cho trẻ em / thai phụ (từ tests.json → special).
+ * @returns null (người lớn) | {kind:'same'} | {kind:'na', reason} | {kind:'missing', reason}
+ *          | {kind:'ref', lo, hi, labels, source, note} | {kind:'bands', bands, source, note}
+ */
+export function specialFor(t, profile = {}) {
+  const g = profile.group;
+  if (!g || g === 'adult') return null;
+  const sp = t.special && t.special[g];
+  const who = g === 'child' ? 'trẻ em' : 'thai phụ';
+  if (!sp) return { kind: 'missing', reason: `Chưa có ngưỡng chuẩn chung cho ${who} với chỉ số này (thay đổi nhiều theo ${g === 'child' ? 'tuổi' : 'tháng thai'}). Hãy nhập ngưỡng in trên phiếu.` };
+  if (sp.mode === 'same') return { kind: 'same', source: sp.source };
+  if (sp.mode === 'na') return { kind: 'na', reason: sp.reason };
+  const needAge = sp.rules.some(r => r.ages), needTri = sp.rules.some(r => r.tri);
+  if (g === 'child' && needAge && !profile.ageBand) return { kind: 'missing', reason: 'Hãy chọn tuổi của trẻ để áp dụng ngưỡng phù hợp.' };
+  if (g === 'pregnant' && needTri && !profile.trimester) return { kind: 'missing', reason: 'Hãy chọn giai đoạn thai kỳ (3 tháng đầu/giữa/cuối) để áp dụng ngưỡng phù hợp.' };
+  const rule = sp.rules.find(r => (!r.ages || r.ages.includes(profile.ageBand)) && (!r.tri || r.tri.includes(Number(profile.trimester))));
+  if (!rule) return { kind: 'missing', reason: `Chưa có ngưỡng chuẩn cho nhóm ${g === 'child' ? (AGE_LABEL[profile.ageBand] || 'tuổi này') : 'này'}. Hãy nhập ngưỡng in trên phiếu.` };
+  if (rule.bands) return { kind: 'bands', bands: rule.bands, source: sp.source, note: sp.note };
+  let r = rule.ref.all;
+  if (!r) {
+    if (profile.sex !== 'male' && profile.sex !== 'female') return { kind: 'missing', reason: 'Ngưỡng ở nhóm tuổi này khác nhau giữa nam và nữ. Hãy chọn giới tính.' };
+    r = rule.ref[profile.sex];
+  }
+  return { kind: 'ref', lo: r[0], hi: r[1], labels: sp.labels || null, source: sp.source, note: sp.note };
+}
 
 /** Khoảng tham chiếu áp dụng. Không gộp ngưỡng nam/nữ khi thiếu giới tính. */
 export function refFor(t, profile) {
@@ -63,8 +110,9 @@ export function classify(t, raw, profile = {}, labRef = null) {
   const v = n.qualifier === '<' ? n.value - eps : n.qualifier === '>' ? n.value + eps : n.value;
   const base = { value: n.value, display: (n.qualifier ? n.qualifier + ' ' : '') + formatNum(n.value) };
 
-  // 1. Giá trị báo động — luôn kiểm tra trước.
-  const c = t.critical || {};
+  // 1. Giá trị báo động — luôn kiểm tra trước (trừ trẻ dưới 6 tháng: giá trị sinh lý khác nhiều).
+  const infant = profile.group === 'child' && profile.ageBand === 'lt6m';
+  const c = infant ? {} : (t.critical || {});
   if (c.low != null && v < c.low) return { ...base, state: 'critical', level: 'crit', label: 'Cần đánh giá khẩn cấp', dir: 'low', basis: 'critical' };
   if (c.high != null && v > c.high) return { ...base, state: 'critical', level: 'crit', label: 'Cần đánh giá khẩn cấp', dir: 'high', basis: 'critical' };
 
@@ -73,10 +121,23 @@ export function classify(t, raw, profile = {}, labRef = null) {
     return { ...base, ...rangeClass(t, v, labRef.lo ?? null, labRef.hi ?? null), basis: 'lab' };
   }
 
-  // 3. Đối tượng ngoài phạm vi ngưỡng của app.
-  if (profile.group && profile.group !== 'adult') {
-    return { ...base, state: 'insufficient', level: 'na', label: 'Chưa đủ thông tin',
-      reason: `Ngưỡng của app dành cho người lớn không mang thai. Với đối tượng "${PROFILE_GROUPS[profile.group] || profile.group}", hãy nhập ngưỡng in trên phiếu.` };
+  // 3. Trẻ em / thai phụ: ngưỡng riêng có nguồn; không có thì yêu cầu ngưỡng trên phiếu.
+  const sp = specialFor(t, profile);
+  if (sp && sp.kind === 'na') return { ...base, state: 'insufficient', level: 'na', label: 'Không áp dụng', reason: sp.reason };
+  if (sp && sp.kind === 'missing') return { ...base, state: 'insufficient', level: 'na', label: 'Chưa đủ thông tin', reason: sp.reason };
+  if (sp && sp.kind === 'bands') {
+    const i = bandIndex({ bands: sp.bands }, v), b = sp.bands[i];
+    const okIdx = sp.bands.findIndex(x => x.level === 'ok');
+    const dir = b.level === 'ok' ? null : (i < okIdx ? 'low' : 'high');
+    return { ...base, state: b.level === 'ok' ? 'normal' : 'band', level: b.level, label: b.label, dir, basis: 'special', source: sp.source, note: sp.note };
+  }
+  if (sp && sp.kind === 'ref') {
+    const rc = rangeClass(t, v, sp.lo, sp.hi);
+    if (sp.labels) {
+      if (rc.state === 'low' && sp.labels.low) rc.label = sp.labels.low;
+      if (rc.state === 'normal' && sp.labels.normal) rc.label = sp.labels.normal;
+    }
+    return { ...base, ...rc, basis: 'special', source: sp.source, note: sp.note };
   }
 
   // 4. Ngưỡng quyết định lâm sàng (đường huyết, mỡ máu, eGFR...)
@@ -85,7 +146,7 @@ export function classify(t, raw, profile = {}, labRef = null) {
     const okIdx = t.bands.findIndex(x => x.level === 'ok');
     const dir = b.level === 'ok' ? null : (i < okIdx ? 'low' : 'high');
     const state = b.level === 'ok' ? 'normal' : 'band';
-    return { ...base, state, level: b.level, label: b.label, dir, basis: 'clinical' };
+    return { ...base, state, level: b.level, label: b.label, dir, basis: 'clinical', source: sp && sp.source };
   }
 
   // 5. Khoảng tham chiếu phổ biến của app

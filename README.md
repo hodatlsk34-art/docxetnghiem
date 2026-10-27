@@ -53,5 +53,6 @@ TESSERACT_LOCAL=... npm run test:e2e   # kèm kiểm thử chụp ảnh với b�
 
 - [ ] Rà soát khoảng tham chiếu, giá trị báo động trong `data/tests.json`
 - [ ] Rà soát 13 tổ hợp trong `js/classification.js` (`RULES`)
-- [ ] Bổ sung ngưỡng trẻ em, thai phụ
+- [ ] Bác sĩ nhi, bác sĩ sản rà soát ngưỡng trẻ em / thai phụ (`special` trong `data/tests.json`)
+- [ ] Cân nhắc bổ sung ngưỡng theo tuổi cho bạch cầu, tiểu cầu, creatinin, ALP
 - [ ] Ghi tên người rà soát và ngày vào `review` trong `data/tests.json`

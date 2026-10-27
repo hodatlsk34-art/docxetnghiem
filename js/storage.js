@@ -10,7 +10,7 @@ export const MAX_HISTORY = 60;
 export function emptyState() {
   return {
     v: SCHEMA,
-    profile: { sex: '', group: 'adult' },
+    profile: { sex: '', group: 'adult', ageBand: '', trimester: 0 },
     draft: { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] },
     history: []
   };
@@ -19,16 +19,25 @@ export function emptyState() {
 const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const okNum = x => x === null || (typeof x === 'number' && Number.isFinite(x));
 
+const AGE_IDS = ['lt6m', '6-23m', '2-4y', '5-9y', '10-11y', '12-14y', '15-17y'];
+export function cleanProfile(p) {
+  const out = { sex: '', group: 'adult', ageBand: '', trimester: 0 };
+  if (!isObj(p)) return out;
+  if (['male', 'female', ''].includes(p.sex)) out.sex = p.sex;
+  if (['adult', 'child', 'pregnant'].includes(p.group)) out.group = p.group;
+  if (out.group === 'child' && AGE_IDS.includes(p.ageBand)) out.ageBand = p.ageBand;
+  if (out.group === 'pregnant' && [1, 2, 3].includes(Number(p.trimester))) out.trimester = Number(p.trimester);
+  if (out.group === 'pregnant') out.sex = 'female';
+  return out;
+}
+
 /** Làm sạch toàn bộ trạng thái: chỉ giữ khóa hợp lệ, đúng kiểu. */
 export function sanitize(input, tests) {
   const byId = new Map(tests.map(t => [t.id, t]));
   const out = emptyState();
   if (!isObj(input)) return out;
 
-  if (isObj(input.profile)) {
-    if (['male', 'female', ''].includes(input.profile.sex)) out.profile.sex = input.profile.sex;
-    if (['adult', 'child', 'pregnant'].includes(input.profile.group)) out.profile.group = input.profile.group;
-  }
+  out.profile = cleanProfile(input.profile);
   const cleanValues = (vals) => {
     const res = {};
     if (!isObj(vals)) return res;
@@ -67,12 +76,7 @@ export function sanitize(input, tests) {
       if (!at || isNaN(at)) continue;
       const values = cleanValues(h.values);
       if (!Object.keys(values).length) continue;
-      const prof = { sex: '', group: 'adult' };
-      if (isObj(h.profile)) {
-        if (['male', 'female', ''].includes(h.profile.sex)) prof.sex = h.profile.sex;
-        if (['adult', 'child', 'pregnant'].includes(h.profile.group)) prof.group = h.profile.group;
-      }
-      out.history.push({ id: h.id, at: at.toISOString(), profile: prof, values, labRefs: cleanRefs(h.labRefs) });
+      out.history.push({ id: h.id, at: at.toISOString(), profile: cleanProfile(h.profile), values, labRefs: cleanRefs(h.labRefs) });
     }
   }
   return out;
