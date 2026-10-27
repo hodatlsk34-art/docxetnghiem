@@ -1,5 +1,14 @@
 # Nhật ký thay đổi
 
+## 2.1.0 — 27/10/2026
+- Thẻ "Cài app lên điện thoại" ở trang chủ: nút "Cài đặt ngay" trên Android/máy tính; hướng dẫn từng bước cho iPhone; nhận biết khi mở trong Zalo/Facebook/Messenger và hướng dẫn mở bằng trình duyệt.
+- Hướng dẫn cài trong mục Hướng dẫn và Cài đặt; tự ẩn khi đã chạy như app.
+- Cảm giác như ứng dụng: tắt kéo-để-tải-lại, không chọn nhầm chữ khi chạm, hiệu ứng nhấn, thanh tiêu đề cố định khi chạy như app.
+- Manifest: ảnh giới thiệu cho hộp thoại cài (Android), khóa màn hình dọc.
+
+## 2.0.1 — 27/10/2026
+- Menu có ô màu riêng cho từng mục, chữ đậm cùng màu.
+
 ## 2.0.0 — 27/10/2026
 
 **Mới**

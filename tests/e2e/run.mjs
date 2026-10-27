@@ -164,6 +164,33 @@ try {
     await ctx.close();
   }
 
+  // 5b. Gợi ý cài app theo thiết bị
+  {
+    const cases = [
+      ['iPhone Safari', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1', 'Thêm vào MH chính'],
+      ['Zalo', 'Mozilla/5.0 (Linux; Android 13; SM-A536E Build/TP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36 Zalo android/12100682 ZaloTheme/light', 'Mở bằng trình duyệt'],
+      ['Android Chrome', 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36', 'Cài đặt ứng dụng']
+    ];
+    for (const [name, ua, want] of cases) {
+      const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, userAgent: ua, serviceWorkers: 'block' });
+      await ctx.route(/fonts\./, r => r.abort());
+      const page = await ctx.newPage();
+      await page.goto(URLB); await page.waitForSelector('.hero');
+      check(`gợi ý cài app (${name})`, (await page.textContent('.install')).includes(want));
+      if (name === 'Android Chrome') {
+        await page.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.__prompted = 1; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); });
+        await page.waitForSelector('text=Cài đặt ngay');
+        await page.click('text=Cài đặt ngay');
+        check('nút "Cài đặt ngay" gọi hộp thoại cài', await page.evaluate(() => window.__prompted === 1));
+        await page.click('.install .icon-btn');
+        await page.reload(); await page.waitForSelector('.hero');
+        check('ẩn gợi ý cài sau khi bấm ✕', !(await page.isVisible('.install')));
+        await shot(page, '11-goi-y-cai');
+      }
+      await ctx.close();
+    }
+  }
+
   // 6. PWA: service worker, ngoại tuyến
   {
     const { page, ctx } = await newPage(375, 760, { sw: true });
@@ -176,6 +203,11 @@ try {
     check('hiện thông báo ngoại tuyến', await page.isVisible('#offline'));
     const manifestOk = await page.evaluate(async () => { const m = await (await fetch('manifest.webmanifest')).json(); return m.icons.length >= 3 && m.start_url === './'; });
     check('manifest hợp lệ (đường dẫn con)', manifestOk);
+    const cdp = await ctx.newCDPSession(page);
+    await ctx.setOffline(false);
+    await page.reload(); await page.waitForSelector('.hero');
+    const ie = await cdp.send('Page.getInstallabilityErrors');
+    check('Chrome đánh giá cài được như app', ie.installabilityErrors.length === 0, JSON.stringify(ie.installabilityErrors));
     await ctx.close();
   }
 } catch (e) {

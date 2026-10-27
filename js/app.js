@@ -5,8 +5,9 @@ import { parseNumber, parseLabRef, formatNum, QUAL_LABEL } from './validation.js
 import { classify, bucket, evaluateRules, relatedTests, refFor, PROFILE_GROUPS } from './classification.js';
 import { createStore, newId } from './storage.js';
 import { parseLabText, recognizeImages } from './ocr.js';
+import { installCard, installSteps, isStandalone } from './install.js';
 
-export const APP_VERSION = '2.0.1';
+export const APP_VERSION = '2.1.0';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -390,6 +391,7 @@ function screenHome() {
       h('div', { class: 'brand' }, h('img', { src: 'icons/icon-192.png', alt: '', class: 'logo' }),
         h('div', {}, h('h1', { text: 'Đọc Phiếu Xét Nghiệm' }), h('p', { class: 'tagline', text: 'Hiểu kết quả · Chủ động sức khỏe' }))),
       h('a', { href: '#caidat', class: 'icon-btn', 'aria-label': 'Cài đặt' }, icon('gear'))),
+    installCard(),
     h('div', { class: 'card cta' },
       h('div', { class: 'cta-ic' }, icon('camera')),
       h('div', { class: 'cta-tx' }, h('h2', { text: 'Chụp ảnh phiếu xét nghiệm' }),
@@ -916,6 +918,7 @@ function screenGuide() {
     [['ok', 'Trong khoảng tham chiếu'], ['warn', 'Lệch nhẹ khỏi khoảng'], ['bad', 'Ngoài khoảng tham chiếu'], ['crit', 'Vượt giá trị báo động — cần khẩn cấp'], ['na', 'Chưa đủ thông tin / không hợp lệ']]
       .map(([l, txt]) => h('div', { class: 'row' }, h('span', { class: 'pill ' + l }, h('span', { class: 'pill-g', text: PILL_GLYPH[l] })), h('span', { text: txt }))));
   return h('section', { class: 'screen' }, topbar('Hướng dẫn sử dụng', { backTo: '' }),
+    sec('phone', 'Cài app lên màn hình chính', h('p', { class: 'small', text: 'Sau khi cài, app mở toàn màn hình như ứng dụng thật (không có thanh địa chỉ), có biểu tượng riêng và dùng được khi mất mạng.' }), installSteps()),
     sec('camera', 'Chụp ảnh phiếu để app tự đọc', ul([
       'Đặt phiếu trên mặt phẳng, đủ sáng, không bị bóng tay hay lóa đèn.',
       'Chụp thẳng từ trên xuống, để bảng kết quả chiếm gần hết khung hình.',
@@ -943,6 +946,7 @@ function screenGuide() {
 
 function screenSettings() {
   return h('section', { class: 'screen' }, topbar('Cài đặt', { backTo: '' }),
+    isStandalone() ? h('div', { class: 'card note' }, icon('check'), h('p', { text: 'Bạn đang dùng app đã cài trên màn hình chính.' })) : installCard({ force: true }),
     profileBlock(),
     h('div', { class: 'card list' },
       h('button', { class: 'res-row', onclick: () => confirmBox('Xóa toàn bộ dữ liệu?', 'Lịch sử, chỉ số đang nhập và lựa chọn giới tính trên trình duyệt này sẽ bị xóa vĩnh viễn.', 'Xóa tất cả', wipeAll) },
