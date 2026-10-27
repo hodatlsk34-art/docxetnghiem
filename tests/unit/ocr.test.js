@@ -63,3 +63,21 @@ test('văn bản rác không làm hỏng', () => {
   const r = parseLabText('<script>alert(1)</script>\n\n%%%%\n12345', DATA.tests);
   assert.equal(r.items.length, 0);
 });
+
+import { parseRefText, labNameFromText } from '../../js/ocr.js';
+test('đọc các kiểu ghi ngưỡng', () => {
+  assert.deepEqual(parseRefText('4,0 den 10,0'), { lo: 4, hi: 10 });
+  assert.deepEqual(parseRefText('<= 40'), { lo: null, hi: 40 });
+  assert.deepEqual(parseRefText('nam: 130-170; nu: 120-150'), { bySex: { male: { lo: 130, hi: 170 }, female: { lo: 120, hi: 150 } } });
+  assert.deepEqual(parseRefText('mmol/l 3.9 - 6.4'), { lo: 3.9, hi: 6.4 });
+  assert.equal(parseRefText('am tinh'), null);
+});
+test('nhận tên nơi xét nghiệm', () => {
+  assert.equal(labNameFromText('SỞ Y TẾ\nBỆNH VIỆN ĐA KHOA MINH AN   ĐT 028\nKhoa Xét nghiệm'), 'BỆNH VIỆN ĐA KHOA MINH AN');
+  assert.equal(labNameFromText('Họ tên: A\nHGB 120'), '');
+});
+test('ngưỡng nam/nữ trên phiếu chọn theo giới tính ghi trên phiếu', () => {
+  const r = parseLabText('Giới tính: Nữ\nHGB 125 g/L Nam: 130 - 170; Nữ: 120 - 150', DATA.tests);
+  assert.deepEqual(r.items[0].labRef, { lo: 120, hi: 150 });
+  assert.ok(r.items[0].refBySex);
+});

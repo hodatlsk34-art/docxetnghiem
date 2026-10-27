@@ -3,14 +3,14 @@
 import { h, clear, icon, svg } from './dom.js';
 import { parseNumber, parseLabRef, formatNum, QUAL_LABEL } from './validation.js';
 import { classify, bucket, evaluateRules, relatedTests, refFor, specialFor, PROFILE_GROUPS, AGE_BANDS, TRIMESTERS, ageBandFromYears, profileLabel } from './classification.js';
-import { createStore, newId } from './storage.js';
+import { createStore, newId, upsertLab, resolveLabRef, labKey } from './storage.js';
 import { parseLabText, configureTests } from './ocr.js';
 import { extractFromFiles, fileKind, ACCEPT } from './files.js';
 import { installCard, installSteps, isStandalone } from './install.js';
 import { interpret, PANEL_MEMBERS, FORMULA_SOURCES } from './interpret.js';
 import { overallSummary, SUMMARY_SOURCES } from './summary.js';
 
-export const APP_VERSION = '2.5.0';
+export const APP_VERSION = '2.6.0';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -30,6 +30,9 @@ const SAMPLE = {
 };
 
 let D, BY, store, S;
+const refreshApplyRef = { fn: null };
+const EMPTY_DRAFT = () => ({ values: {}, labRefs: {}, refOrigin: {}, labId: '', order: [], sample: false, fromPhoto: [] });
+const currentLab = () => S.labs.find(l => l.id === S.draft.labId) || null;
 const ui = { filter: 'all', lookGroup: 'all', query: '', tab: 'explain', ocr: null, compare: '', savedSig: '' };
 const $main = () => document.getElementById('main');
 
@@ -163,7 +166,7 @@ function groupBadge(t) {
 function refText(t, labRef, profile = S.profile) {
   if (t.type === 'qual') return 'Bình thường: âm tính';
   const one = (lo, hi) => hi == null ? `≥ ${formatNum(lo)}` : (lo == null || lo === 0) ? `≤ ${formatNum(hi)}` : `${formatNum(lo)} – ${formatNum(hi)}`;
-  if (labRef && (labRef.lo != null || labRef.hi != null)) return one(labRef.lo, labRef.hi) + ' (theo phiếu)';
+  if (labRef && (labRef.lo != null || labRef.hi != null)) return one(labRef.lo, labRef.hi) + (labRef.src === 'saved' ? ' (đã lưu)' : ' (theo phiếu)');
   const sp = specialFor(t, profile);
   if (sp && sp.kind === 'ref') return sp.lo == null ? `≤ ${formatNum(sp.hi)}` : sp.hi == null ? `≥ ${formatNum(sp.lo)}` : one(sp.lo, sp.hi);
   if (sp && sp.kind === 'bands') {
@@ -243,7 +246,9 @@ export function startImport(files) {
     const parsed = parseLabText(res.text, D.tests);
     Object.assign(ui.ocr, { status: 'review', text: res.text, urls: res.thumbs, methods: res.methods, notes: res.notes });
     ui.ocr.items = parsed.items.map(it => ({ ...it, existing: S.draft.values[it.id] ?? '' }));
-    ui.ocr.unmatched = parsed.unmatched; ui.ocr.hints = parsed.hints;
+    ui.ocr.unmatched = parsed.unmatched; ui.ocr.hints = parsed.hints; ui.ocr.detectedLab = parsed.labName || '';
+    if (parsed.hints && parsed.hints.sex && !S.profile.sex) { S.profile.sex = parsed.hints.sex; persist(); }
+    ui.ocr.items.forEach(it => { if (it.refBySex && !it.labRef && S.profile.sex) it.labRef = { ...it.refBySex[S.profile.sex] }; });
     if (route().name === 'anh') render();
   }).catch(err => {
     if (!ui.ocr || ui.ocr.run !== run) return;
@@ -307,6 +312,38 @@ function screenPhoto() {
   }
   wrap.append(...hintRow);
 
+  // Nơi xét nghiệm: nhận từ đầu phiếu, bộ ngưỡng đã lưu được dùng cho chỉ số phiếu không in ngưỡng
+  if (o.labName === undefined) o.labName = o.detectedLab || (currentLab() ? currentLab().name : '');
+  const labInfo = h('p', { class: 'small muted' });
+  const fillSaved = () => {
+    const known = S.labs.find(l => o.labName && labKey(l.name) === labKey(o.labName));
+    let k = 0;
+    for (const it of items) {
+      if (it.labRefSaved) { it.labRef = null; it.labRefSaved = false; }
+      if (!it.labRef && !it.refBySex && known) {
+        const r = resolveLabRef(known.refs[it.id], S.profile.sex);
+        if (r) { it.labRef = r; it.labRefSaved = true; k++; }
+      }
+    }
+    const slipN = items.filter(i => (i.labRef && !i.labRefSaved) || i.refBySex).length;
+    labInfo.textContent = (slipN ? `Đọc được ngưỡng của ${slipN} chỉ số trên phiếu${o.labName ? ' — sẽ lưu vào bộ ngưỡng của nơi này để dùng lần sau' : ''}. ` : 'Phiếu không in ngưỡng hoặc app chưa đọc được. ')
+      + (known ? `Đã có bộ ngưỡng của nơi này (${Object.keys(known.refs).length} chỉ số)${k ? `, dùng cho ${k} chỉ số phiếu không ghi ngưỡng` : ''}.` : '');
+  };
+  const labInput = h('input', { class: 'inp', id: 'lab-name', value: o.labName, maxlength: '80', placeholder: 'Ví dụ: Bệnh viện Đa khoa tỉnh…', list: 'lab-list', autocomplete: 'off' });
+  labInput.addEventListener('change', () => {
+    o.labName = labInput.value.trim();
+    fillSaved();
+    // vẽ lại danh sách chỉ số (không vẽ lại cả màn hình để không mất thao tác đang bấm)
+    const l = document.querySelector('.ocr-list');
+    if (l) l.replaceChildren(...items.map(it => ocrRow(it, () => { refreshApplyRef.fn && refreshApplyRef.fn(); })));
+    refreshApplyRef.fn && refreshApplyRef.fn();
+  });
+  wrap.append(h('div', { class: 'card labcard' },
+    h('label', { class: 'lbl', for: 'lab-name' }, icon('flask'), ' Nơi xét nghiệm'),
+    labInput, h('datalist', { id: 'lab-list' }, S.labs.map(l => h('option', { value: l.name }))),
+    labInfo));
+  fillSaved();
+
   if (!items.length) {
     wrap.append(h('div', { class: 'card center-msg' }, icon('image', 'xl'),
       h('h2', { text: 'Không nhận ra chỉ số nào' }),
@@ -324,6 +361,7 @@ function screenPhoto() {
     checkBox.replaceChildren(...(checks.length ? [checksBox(checks)] : []));
   };
   const onRowChange = () => { refreshApply(); refreshChecks(); };
+  refreshApplyRef.fn = onRowChange;
   const list = h('div', { class: 'list ocr-list' });
   for (const it of items) list.append(ocrRow(it, onRowChange));
   wrap.append(checkBox);
@@ -374,9 +412,13 @@ function ocrRow(it, onChange) {
   }
   for (const w of it.warnings) if (!it.alternatives || !/dấu thập phân/.test(w)) extras.push(h('p', { class: 'warn-t small' }, icon('alert'), w));
   for (const n of it.notes || []) extras.push(h('p', { class: 'muted small', text: n }));
-  if (it.labRef) {
-    const chip = h('span', { class: 'chip ref' }, 'Ngưỡng phiếu: ' + refText(t, it.labRef).replace(' (theo phiếu)', ''),
-      h('button', { class: 'chip-x', 'aria-label': 'Bỏ ngưỡng phiếu', onclick: () => { it.labRef = null; chip.remove(); upd(); } }, icon('x')));
+  if (it.refBySex) {
+    const f = r => (r.lo == null ? '≤ ' + formatNum(r.hi) : r.hi == null ? '≥ ' + formatNum(r.lo) : formatNum(r.lo) + ' – ' + formatNum(r.hi));
+    extras.push(h('span', { class: 'chip ref' }, `Ngưỡng phiếu: nam ${f(it.refBySex.male)}; nữ ${f(it.refBySex.female)}`));
+    if (!it.labRef) extras.push(h('p', { class: 'warn-t small' }, icon('alert'), 'Chọn giới tính để áp dụng đúng ngưỡng.'));
+  } else if (it.labRef) {
+    const chip = h('span', { class: 'chip ref' + (it.labRefSaved ? ' saved' : '') }, (it.labRefSaved ? 'Ngưỡng đã lưu: ' : 'Ngưỡng phiếu: ') + refText(t, it.labRef).replace(/ \((theo phiếu|đã lưu)\)/, ''),
+      h('button', { class: 'chip-x', 'aria-label': 'Bỏ ngưỡng', onclick: () => { it.labRef = null; it.labRefSaved = false; chip.remove(); upd(); } }, icon('x')));
     extras.push(chip);
   }
   if (it.existing && it.existing !== it.value) extras.push(h('p', { class: 'muted small', text: `Phiếu đang có ${displayValue(t, it.existing)} — sẽ được thay.` }));
@@ -394,11 +436,29 @@ function ocrRow(it, onChange) {
 
 function applyOcr() {
   const o = ui.ocr; if (!o) return;
-  let n = 0;
+  let n = 0, fromSlip = 0, fromSaved = 0;
+  const sex = S.profile.sex;
+  // Lưu bộ ngưỡng đọc được vào hồ sơ nơi xét nghiệm
+  const labName = (o.labName || '').trim();
+  const slipRefs = {};
+  for (const it of o.items) {
+    if (!it.selected || it.value === '') continue;
+    if (it.refBySex) slipRefs[it.id] = { lo: null, hi: null, male: it.refBySex.male, female: it.refBySex.female };
+    else if (it.labRef && !it.labRefSaved) slipRefs[it.id] = { lo: it.labRef.lo, hi: it.labRef.hi };
+  }
+  let lab = null;
+  if (labName && Object.keys(slipRefs).length) lab = upsertLab(S, labName, slipRefs);
+  else if (labName) lab = S.labs.find(l => labKey(l.name) === labKey(labName)) || null;
+  if (lab) S.draft.labId = lab.id;
   for (const it of o.items) {
     if (!it.selected || it.value === '') continue;
     S.draft.values[it.id] = it.value;
-    if (it.labRef) S.draft.labRefs[it.id] = it.labRef; else delete S.draft.labRefs[it.id];
+    let ref = null, origin = '';
+    if (it.refBySex) { ref = resolveLabRef({ male: it.refBySex.male, female: it.refBySex.female }, sex); origin = 'slip'; }
+    else if (it.labRef && !it.labRefSaved) { ref = { lo: it.labRef.lo, hi: it.labRef.hi }; origin = 'slip'; }
+    else if (it.labRef && it.labRefSaved) { ref = { lo: it.labRef.lo, hi: it.labRef.hi }; origin = 'saved'; }
+    if (ref) { S.draft.labRefs[it.id] = ref; S.draft.refOrigin[it.id] = origin; origin === 'slip' ? fromSlip++ : fromSaved++; }
+    else { delete S.draft.labRefs[it.id]; delete S.draft.refOrigin[it.id]; }
     if (!S.draft.order.includes(it.id)) S.draft.order.push(it.id);
     if (!S.draft.fromPhoto.includes(it.id)) S.draft.fromPhoto.push(it.id);
     n++;
@@ -407,8 +467,19 @@ function applyOcr() {
   persist();
   o.urls.forEach(u => { if (String(u).startsWith('blob:')) URL.revokeObjectURL(u); });
   ui.ocr = null;
-  toast(`Đã thêm ${n} chỉ số từ ảnh.`);
+  toast(`Đã thêm ${n} chỉ số. Ngưỡng theo phiếu: ${fromSlip}${fromSaved ? `, ngưỡng đã lưu: ${fromSaved}` : ''}${lab ? ` (${lab.name})` : ''}.`);
   go('ketqua');
+}
+
+/** Áp dụng bộ ngưỡng của nơi xét nghiệm cho các chỉ số chưa có ngưỡng phiếu/nhập tay. */
+function applyLabToDraft() {
+  const lab = currentLab();
+  for (const id of Object.keys(S.draft.values)) {
+    if (S.draft.refOrigin[id] === 'slip' || S.draft.refOrigin[id] === 'manual') continue;
+    const r = lab ? resolveLabRef(lab.refs[id], S.profile.sex) : null;
+    if (r) { S.draft.labRefs[id] = r; S.draft.refOrigin[id] = 'saved'; }
+    else if (S.draft.refOrigin[id] === 'saved') { delete S.draft.labRefs[id]; delete S.draft.refOrigin[id]; }
+  }
 }
 
 // ---------------------------------------------------------------- TRANG CHỦ
@@ -449,7 +520,7 @@ function tile(route, ic, cls, title, sub) {
 
 // ---------------------------------------------------------------- NHẬP
 function profileBlock() {
-  const set = patch => { Object.assign(S.profile, patch); persist(); render(); };
+  const set = patch => { Object.assign(S.profile, patch); applyLabToDraft(); persist(); render(); };
   const sexBtn = (v, label, sym) => h('button', { class: 'seg-btn' + (S.profile.sex === v ? ' on' : ''), 'aria-pressed': String(S.profile.sex === v),
     onclick: () => {
       const sex = S.profile.sex === v ? '' : v;
@@ -512,7 +583,7 @@ function screenEnter() {
   const addTest = id => {
     if (!(id in S.draft.values)) S.draft.values[id] = '';
     if (!S.draft.order.includes(id)) S.draft.order.push(id);
-    persist(); render();
+    applyLabToDraft(); persist(); render();
     setTimeout(() => { const el = document.getElementById('in-' + id); if (el) { el.focus(); el.scrollIntoView({ block: 'center' }); } }, 30);
   };
   const showSugg = () => {
@@ -533,9 +604,17 @@ function screenEnter() {
       if (!(t.id in S.draft.values)) S.draft.values[t.id] = '';
       if (!S.draft.order.includes(t.id)) S.draft.order.push(t.id);
     });
-    persist(); render();
+    applyLabToDraft(); persist(); render();
   };
 
+  const labSel = h('select', { class: 'inp', id: 'lab-sel', 'aria-label': 'Nơi xét nghiệm' },
+    h('option', { value: '', text: S.labs.length ? 'Không chọn — dùng ngưỡng chuẩn của app' : 'Chưa có — chụp/tải phiếu có in ngưỡng để app tự lưu' }),
+    S.labs.map(l => h('option', { value: l.id, selected: l.id === S.draft.labId, text: `${l.name} (${Object.keys(l.refs).length} ngưỡng)` })));
+  labSel.addEventListener('change', () => { S.draft.labId = labSel.value; applyLabToDraft(); persist(); render(); toast(labSel.value ? 'Đã áp dụng bộ ngưỡng của ' + currentLab().name + '.' : 'Đã chuyển về ngưỡng chuẩn của app.'); });
+  const labBox = h('div', { class: 'card labcard' },
+    h('label', { class: 'lbl', for: 'lab-sel' }, icon('flask'), ' Nơi xét nghiệm'),
+    labSel,
+    h('p', { class: 'small muted', text: 'Mỗi nơi xét nghiệm có thể dùng ngưỡng khác nhau. Khi chụp/tải phiếu có in ngưỡng, app tự lưu bộ ngưỡng của nơi đó và tự áp dụng cho lần sau, kể cả khi nhập tay.' }));
   const listBox = h('div', { class: 'card list-card' },
     h('div', { class: 'row-between' }, h('h2', { class: 'sec', text: `Các chỉ số đã thêm (${order.length})` }),
       S.draft.sample ? h('span', { class: 'tag warn', text: 'Dữ liệu ví dụ' }) : null),
@@ -552,11 +631,11 @@ function screenEnter() {
     listBox.append(rows);
   }
 
-  const right = h('div', { class: 'col' }, listBox,
+  const right = h('div', { class: 'col' }, labBox, listBox,
     h('div', { class: 'row-wrap tools' },
       h('button', { class: 'btn ghost', onclick: loadSample }, 'Tải ví dụ'),
       order.length ? h('button', { class: 'btn ghost danger-t', onclick: () => confirmBox('Xóa các chỉ số đang nhập?', 'Các giá trị và ngưỡng phiếu đang nhập sẽ bị xóa. Lịch sử đã lưu không bị ảnh hưởng.', 'Xóa', () => {
-        S.draft = { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] }; persist(); render(); toast('Đã xóa các chỉ số đang nhập.');
+        S.draft = { values: {}, labRefs: {}, refOrigin: {}, labId: '', order: [], sample: false, fromPhoto: [] }; persist(); render(); toast('Đã xóa các chỉ số đang nhập.');
       }) }, icon('trash'), 'Xóa dữ liệu') : null));
 
   const filled = order.filter(id => S.draft.values[id] !== '').length;
@@ -569,7 +648,7 @@ function screenEnter() {
 function loadSample() {
   const doIt = () => {
     S.profile = { ...SAMPLE.profile };
-    S.draft = { values: { ...SAMPLE.values }, labRefs: {}, order: Object.keys(SAMPLE.values), sample: true, fromPhoto: [] };
+    S.draft = { ...EMPTY_DRAFT(), values: { ...SAMPLE.values }, order: Object.keys(SAMPLE.values), sample: true };
     persist(); render(); toast('Đã tải dữ liệu ví dụ (không phải kết quả của bạn).');
   };
   if (Object.values(S.draft.values).some(v => v !== '') && !S.draft.sample) confirmBox('Thay bằng dữ liệu ví dụ?', 'Các chỉ số đang nhập sẽ bị thay bằng dữ liệu ví dụ.', 'Tải ví dụ', doIt, false);
@@ -587,8 +666,10 @@ function entryRow(t, res) {
       value: S.draft.values[id] || '', placeholder: '—', 'aria-label': `${t.short} – ${t.name}`, 'aria-describedby': 'st-' + id });
   }
   const status = h('div', { class: 'e-status', id: 'st-' + id, 'aria-live': 'polite' });
+  const refNote = h('span', { class: 'small ref-note' });
   const paint = () => {
     const r = classify(t, S.draft.values[id], S.profile, S.draft.labRefs[id] || null);
+    refNote.textContent = S.draft.labRefs[id] ? (S.draft.refOrigin[id] === 'saved' ? `Đang dùng ngưỡng đã lưu${currentLab() ? ' của ' + currentLab().name : ''}: ` : S.draft.refOrigin[id] === 'slip' ? 'Đang dùng ngưỡng in trên phiếu: ' : 'Đang dùng ngưỡng bạn nhập: ') + refText(t, S.draft.labRefs[id]).replace(/ \((theo phiếu|đã lưu)\)/, '') : '';
     clear(status);
     if (r.state !== 'empty') status.append(pill(r, true));
     if (fullLabel(r)) status.append(h('span', { class: 'small lbl-full lv-' + r.level, text: fullLabel(r) }));
@@ -614,13 +695,13 @@ function entryRow(t, res) {
   const onRef = () => {
     const p = parseLabRef(lo.value, hi.value);
     refErr.textContent = p.state === 'invalid' ? p.error : '';
-    if (p.state === 'ok') S.draft.labRefs[id] = { lo: p.lo, hi: p.hi };
-    else if (p.state === 'empty') delete S.draft.labRefs[id];
+    if (p.state === 'ok') { S.draft.labRefs[id] = { lo: p.lo, hi: p.hi }; S.draft.refOrigin[id] = 'manual'; }
+    else if (p.state === 'empty') { delete S.draft.labRefs[id]; delete S.draft.refOrigin[id]; applyLabToDraft(); }
     persist(); paint();
   };
   lo.addEventListener('input', onRef); hi.addEventListener('input', onRef);
   const refBox = t.type === 'num' ? h('details', { class: 'labref', open: !!S.draft.labRefs[id] },
-    h('summary', { text: S.draft.labRefs[id] ? 'Ngưỡng trên phiếu' : '＋ Ngưỡng trên phiếu (nếu khác)' }),
+    h('summary', { text: S.draft.labRefs[id] ? 'Ngưỡng đang dùng (sửa được)' : '＋ Ngưỡng trên phiếu (nếu khác)' }),
     h('div', { class: 'ref-in' }, lo, h('span', { text: '–' }), hi, h('span', { class: 'unit', text: t.unit })), refErr,
     h('p', { class: 'muted small', text: `Ngưỡng của app${S.profile.group !== 'adult' ? ' (' + profileLabel(S.profile) + ')' : ''}: ${refText(t, null)}. Ngưỡng trên phiếu được ưu tiên khi phân loại.` })) : null;
 
@@ -631,11 +712,12 @@ function entryRow(t, res) {
         h('label', { for: 'in-' + id, class: 'nm' }, h('strong', { text: t.short }), h('span', { class: 'muted small', text: t.name })),
         h('div', { class: 'e-val' }, field, h('span', { class: 'unit', text: t.unit || '' })),
         h('button', { class: 'icon-btn sm', 'aria-label': 'Xóa ' + t.short, onclick: () => {
-          delete S.draft.values[id]; delete S.draft.labRefs[id];
+          delete S.draft.values[id]; delete S.draft.labRefs[id]; delete S.draft.refOrigin[id];
           S.draft.order = S.draft.order.filter(x => x !== id); S.draft.fromPhoto = S.draft.fromPhoto.filter(x => x !== id);
           persist(); render();
         } }, icon('trash'))),
-      h('div', { class: 'e-sub' }, status, S.draft.fromPhoto.includes(id) ? h('span', { class: 'tag', text: 'từ ảnh' }) : null),
+      h('div', { class: 'e-sub' }, status, S.draft.fromPhoto.includes(id) ? h('span', { class: 'tag', text: 'từ phiếu' }) : null),
+      refNote,
       refBox));
   paint();
   return row;
@@ -662,7 +744,8 @@ function searchTests(q) {
 
 // ---------------------------------------------------------------- KẾT QUẢ
 function screenResults(arg, snapshot) {
-  const src = snapshot || { values: S.draft.values, labRefs: S.draft.labRefs, profile: S.profile, at: null };
+  const src = snapshot || { values: S.draft.values, profile: S.profile, at: null, labName: currentLab() ? currentLab().name : '',
+    labRefs: Object.fromEntries(Object.entries(S.draft.labRefs).map(([k, r]) => [k, { ...r, src: S.draft.refOrigin[k] || 'manual' }])) };
   const R = results(src.values, src.labRefs, src.profile);
   const ids = (snapshot ? Object.keys(src.values) : S.draft.order.filter(id => id in src.values)).filter(id => R[id] && R[id].state !== 'empty');
   const wrap = h('section', { class: 'screen results' },
@@ -686,7 +769,8 @@ function screenResults(arg, snapshot) {
     h('div', { class: 'stats' },
       stat('in', cnt.in, 'Trong khoảng', 'check'), stat('out', cnt.out, 'Ngoài khoảng', 'alert'),
       stat('crit', cnt.crit, 'Cần khẩn cấp', 'alert'), stat('na', cnt.unclassified, 'Chưa phân loại', 'help')),
-    h('p', { class: 'small', text: `Đã phân tích ${ids.length}/${D.tests.length} chỉ số có trong app. Kết quả chỉ để tham khảo; bác sĩ sẽ đánh giá cùng triệu chứng và khám lâm sàng.` }));
+    h('p', { class: 'small', text: `Đã phân tích ${ids.length}/${D.tests.length} chỉ số có trong app. Kết quả chỉ để tham khảo; bác sĩ sẽ đánh giá cùng triệu chứng và khám lâm sàng.` }),
+    refUsageNote(ids, src));
 
   const critIds = ids.filter(id => bucket(R[id]) === 'crit');
   const critBox = critIds.length ? h('div', { class: 'card alert-crit', role: 'alert' },
@@ -824,12 +908,21 @@ function linkedBlock(IP, src, OS) {
 }
 window.addEventListener('beforeprint', () => document.querySelectorAll('details.panel').forEach(d => { d.open = true; }));
 
+function refUsageNote(ids, src) {
+  const nums = ids.filter(id => BY[id].type === 'num');
+  const slip = nums.filter(id => src.labRefs[id] && src.labRefs[id].src !== 'saved').length;
+  const saved = nums.filter(id => src.labRefs[id] && src.labRefs[id].src === 'saved').length;
+  const std = nums.length - slip - saved;
+  return h('p', { class: 'small ref-usage' }, icon('flask'),
+    h('span', { text: `Ngưỡng đang dùng: ${slip} chỉ số theo phiếu${saved ? `, ${saved} theo bộ ngưỡng đã lưu` : ''}${src.labName ? ` (${src.labName})` : ''}, ${std} theo ngưỡng chuẩn của app.` }));
+}
+
 function stat(cls, n, label, ic) {
   return h('div', { class: 'stat s-' + cls + (n ? '' : ' zero') }, icon(ic), h('b', { class: 'num', text: String(n) }), h('span', { text: label }));
 }
 function saveHistory(sig) {
   const values = Object.fromEntries(Object.entries(S.draft.values).filter(([, v]) => v !== ''));
-  S.history.unshift({ id: newId(), at: new Date().toISOString(), profile: { ...S.profile }, values, labRefs: { ...S.draft.labRefs } });
+  S.history.unshift({ id: newId(), at: new Date().toISOString(), profile: { ...S.profile }, values, labRefs: { ...S.draft.labRefs }, labName: currentLab() ? currentLab().name : '' });
   S.history = S.history.slice(0, 60);
   const r = store.save(S);
   if (!r.ok) { S.history.shift(); toast(r.error, 'warn'); return; }
@@ -838,7 +931,7 @@ function saveHistory(sig) {
 function openSnapshot(snap) {
   const doIt = () => {
     S.profile = { ...snap.profile };
-    S.draft = { values: { ...snap.values }, labRefs: { ...snap.labRefs }, order: Object.keys(snap.values), sample: false, fromPhoto: [] };
+    S.draft = { ...EMPTY_DRAFT(), values: { ...snap.values }, labRefs: { ...snap.labRefs }, refOrigin: Object.fromEntries(Object.keys(snap.labRefs).map(k => [k, 'slip'])), labId: (S.labs.find(l => snap.labName && labKey(l.name) === labKey(snap.labName)) || {}).id || '', order: Object.keys(snap.values) };
     persist(); go('nhap');
   };
   if (Object.values(S.draft.values).some(v => v !== '')) confirmBox('Mở lần lưu này để chỉnh sửa?', 'Các chỉ số đang nhập sẽ được thay bằng dữ liệu của lần lưu này.', 'Mở', doIt, false);
@@ -862,7 +955,7 @@ function screenDetail(id) {
     const card = h('div', { class: 'card result lv-' + r.level },
       h('div', { class: 'row-between' }, h('span', { class: 'small', text: 'Kết quả của bạn' }), pill(r)),
       h('div', { class: 'big' }, h('b', { class: 'num', text: r.display || displayValue(t, raw) }), ' ', h('span', { text: t.unit })),
-      h('div', { class: 'row-between small' }, h('span', { text: 'Khoảng tham chiếu' }), h('strong', { text: refText(t, labRef) })),
+      h('div', { class: 'row-between small' }, h('span', { text: 'Khoảng tham chiếu' }), h('strong', { text: refText(t, labRef ? { ...labRef, src: S.draft.refOrigin[id] } : null) })),
       fullLabel(r) ? h('p', { class: 'strong', text: fullLabel(r) }) : null,
       r.basis ? h('p', { class: 'muted small', text: 'Căn cứ phân loại: ' + SOURCE_BASIS[r.basis] + (r.basis === 'special' ? ` (${profileLabel(S.profile)})` : '') + '.' + (r.source && D.sources[r.source] ? ' Nguồn: ' + D.sources[r.source].split(' — ')[0] + '.' : '') }) : null,
       r.note ? h('p', { class: 'tip small', text: r.note }) : null,
@@ -1054,7 +1147,7 @@ function sparkline(t, pts) {
 function wipeAll() {
   const r = store.clearAll();
   if (!r.ok) { toast(r.error, 'warn'); return; }
-  S = { v: 2, profile: { sex: '', group: 'adult', ageBand: '', trimester: 0, age: null }, draft: { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] }, history: [] };
+  S = { v: 2, profile: { sex: '', group: 'adult', ageBand: '', trimester: 0, age: null }, draft: EMPTY_DRAFT(), history: [], labs: [] };
   ui.savedSig = ''; go(''); toast('Đã xóa toàn bộ dữ liệu trên trình duyệt này.');
 }
 
@@ -1101,10 +1194,36 @@ function screenGuide() {
       h('p', { class: 'small muted', text: `Phiên bản app ${APP_VERSION} · dữ liệu ${D.version || ''} (${D.updated || ''})` })));
 }
 
+function labManager() {
+  const box = h('div', { class: 'card' }, h('h2', { class: 'sec' }, icon('flask'), ' Bộ ngưỡng theo nơi xét nghiệm'));
+  if (!S.labs.length) {
+    box.append(h('p', { class: 'small muted', text: 'Chưa có. Khi bạn chụp hoặc tải phiếu có in khoảng tham chiếu, app tự lưu bộ ngưỡng của nơi xét nghiệm đó.' }));
+    return box;
+  }
+  box.append(h('p', { class: 'small muted', text: 'App tự cập nhật bộ ngưỡng mỗi khi đọc phiếu mới của cùng nơi xét nghiệm.' }));
+  for (const lab of S.labs) {
+    const rows = Object.entries(lab.refs).filter(([id]) => BY[id]).map(([id, r]) => {
+      const f = x => (x.lo == null ? '≤ ' + formatNum(x.hi) : x.hi == null ? '≥ ' + formatNum(x.lo) : formatNum(x.lo) + ' – ' + formatNum(x.hi));
+      return h('tr', {}, h('td', { text: BY[id].short }), h('td', { class: 'num', text: r.male ? `Nam ${f(r.male)}; Nữ ${f(r.female)}` : f(r) }), h('td', { class: 'muted', text: BY[id].unit }));
+    });
+    const nameIn = h('input', { class: 'inp', value: lab.name, maxlength: '80', 'aria-label': 'Tên nơi xét nghiệm' });
+    nameIn.addEventListener('change', () => { const v = nameIn.value.trim(); if (v) { lab.name = v.slice(0, 80); persist(); toast('Đã đổi tên.'); } });
+    box.append(h('details', { class: 'labitem' },
+      h('summary', {}, h('strong', { text: lab.name }), h('span', { class: 'small muted', text: ` · ${rows.length} ngưỡng · cập nhật ${new Date(lab.updatedAt).toLocaleDateString('vi-VN')}` })),
+      h('div', { class: 'field' }, nameIn),
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, h('th', { text: 'Chỉ số' }), h('th', { text: 'Ngưỡng của nơi này' }), h('th', { text: 'Đơn vị' }))), h('tbody', {}, rows))),
+      h('button', { class: 'btn ghost sm danger-t', onclick: () => confirmBox('Xóa bộ ngưỡng này?', `Bộ ngưỡng của "${lab.name}" sẽ bị xóa. Kết quả đã lưu không bị ảnh hưởng.`, 'Xóa', () => {
+        S.labs = S.labs.filter(l => l.id !== lab.id); if (S.draft.labId === lab.id) { S.draft.labId = ''; applyLabToDraft(); } persist(); render();
+      }) }, icon('trash'), 'Xóa bộ ngưỡng')));
+  }
+  return box;
+}
+
 function screenSettings() {
   return h('section', { class: 'screen' }, topbar('Cài đặt', { backTo: '' }),
     isStandalone() ? h('div', { class: 'card note' }, icon('check'), h('p', { text: 'Bạn đang dùng app đã cài trên màn hình chính.' })) : installCard({ force: true }),
     profileBlock(),
+    labManager(),
     h('div', { class: 'card list' },
       h('button', { class: 'res-row', onclick: () => confirmBox('Xóa toàn bộ dữ liệu?', 'Lịch sử, chỉ số đang nhập và lựa chọn giới tính trên trình duyệt này sẽ bị xóa vĩnh viễn.', 'Xóa tất cả', wipeAll) },
         h('span', { class: 'gbadge g-danger' }, icon('trash')), h('span', { class: 'res-main' }, h('strong', { text: 'Xóa toàn bộ dữ liệu' }), h('span', { class: 'muted small', text: 'Có hỏi lại trước khi xóa' })), icon('chev', 'chev')),

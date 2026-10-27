@@ -5,7 +5,7 @@
 // - Chỉ xóa cache có tiền tố "dpxn-" của chính app.
 // - Tự cập nhật: bản mới được kích hoạt ngay khi tải xong; trang tự tải lại ở thời điểm an toàn.
 const SHARE_CACHE = 'dpxn-share';
-const VERSION = '2.5.0';
+const VERSION = '2.6.0';
 const CACHE = 'dpxn-' + VERSION;
 const CORE = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',

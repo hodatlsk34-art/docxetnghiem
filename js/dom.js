@@ -29,7 +29,7 @@ function append(el, kids) {
   }
 }
 
-export function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); return el; }
+export function clear(el) { el.replaceChildren(); return el; }
 
 // Biểu tượng: chuỗi SVG cố định trong mã nguồn (không chứa dữ liệu người dùng).
 const P = {

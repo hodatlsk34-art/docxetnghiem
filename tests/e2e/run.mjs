@@ -207,6 +207,32 @@ try {
     }
   }
 
+  // 4c. Bộ ngưỡng theo nơi xét nghiệm: lưu từ phiếu có ngưỡng, dùng lại cho phiếu không in ngưỡng và nhập tay
+  {
+    const { page, ctx } = await newPage();
+    await page.goto(URLB + '#nhap'); await page.waitForSelector('#in-gal', { state: 'attached' });
+    await page.setInputFiles('#in-gal', path.join(ROOT, 'tests/fixtures/phieu-mau.csv'));
+    await page.waitForSelector('.ocr-list');
+    await page.fill('#lab-name', 'Bệnh viện Đa khoa Minh An (mẫu thử)'); await page.press('#lab-name', 'Enter'); await page.dispatchEvent('#lab-name', 'change');
+    await page.waitForTimeout(200);
+    await page.click('.sticky-act .btn'); await page.waitForSelector('.summary');
+    check('lưu bộ ngưỡng từ phiếu', (await page.textContent('.ref-usage')).includes('theo phiếu'));
+    // Phiếu thứ hai cùng nơi, không in ngưỡng → dùng ngưỡng đã lưu (TSH 0,4–4,0; HGB 130–170)
+    await page.goto(URLB + '#nhap'); await page.waitForSelector('#in-gal', { state: 'attached' });
+    await page.setInputFiles('#in-gal', path.join(ROOT, 'tests/fixtures/phieu-mau-khong-nguong.txt'));
+    await page.waitForSelector('.ocr-list');
+    check('nhận tên nơi xét nghiệm từ phiếu', (await page.inputValue('#lab-name')).includes('MINH AN'));
+    await page.fill('#lab-name', 'Bệnh viện Đa khoa Minh An (mẫu thử)'); await page.dispatchEvent('#lab-name', 'change'); await page.waitForTimeout(200);
+    check('dùng ngưỡng đã lưu cho phiếu không in ngưỡng', await page.isVisible('text=Ngưỡng đã lưu: 130 – 170'));
+    await page.click('.sticky-act .btn'); await page.waitForSelector('.summary');
+    check('kết quả ghi số chỉ số theo bộ ngưỡng đã lưu', (await page.textContent('.ref-usage')).includes('theo bộ ngưỡng đã lưu'));
+    await page.goto(URLB + '#caidat'); await page.waitForSelector('.labitem');
+    check('quản lý bộ ngưỡng trong Cài đặt', (await page.textContent('.labitem')).includes('Minh An'));
+    check('không lỗi JS (bộ ngưỡng)', page.errors.length === 0, page.errors.join(' | '));
+    await shot(page, '14-bo-nguong');
+    await ctx.close();
+  }
+
   // 5. Desktop + chế độ tối
   {
     const { page, ctx } = await newPage(1280, 860, { dark: true });

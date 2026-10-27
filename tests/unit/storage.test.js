@@ -58,3 +58,20 @@ test('lưu đối tượng trẻ em / thai phụ', () => {
   const c = sanitize({ profile: { sex: 'male', group: 'child', ageBand: 'xx', trimester: 5 } }, DATA.tests);
   assert.deepEqual(c.profile, { sex: 'male', group: 'child', ageBand: '', trimester: 0, age: null });
 });
+
+import { upsertLab, resolveLabRef, emptyState as emptyS } from '../../js/storage.js';
+test('bộ ngưỡng theo nơi xét nghiệm: lưu, cập nhật, chọn theo giới', () => {
+  const st = emptyS();
+  const a = upsertLab(st, 'Bệnh viện Minh An', { glu: { lo: 3.9, hi: 6.4 }, hgb: { lo: null, hi: null, male: { lo: 130, hi: 170 }, female: { lo: 120, hi: 150 } } });
+  const b = upsertLab(st, 'BỆNH VIỆN  MINH AN', { glu: { lo: 4.1, hi: 6.1 } });
+  assert.equal(a, b);
+  assert.equal(st.labs.length, 1);
+  assert.deepEqual(a.refs.glu, { lo: 4.1, hi: 6.1 });
+  assert.deepEqual(resolveLabRef(a.refs.hgb, 'female'), { lo: 120, hi: 150 });
+  assert.equal(resolveLabRef(a.refs.hgb, ''), null);
+  const clean = sanitize({ ...st, labs: [...st.labs, { id: '<x>', name: 'bad', refs: {} }, { id: 'ok-2', name: '  ', refs: {} }], draft: { values: { glu: '5' }, labRefs: { glu: { lo: 4.1, hi: 6.1 } }, refOrigin: { glu: 'saved' }, labId: a.id } }, DATA.tests);
+  assert.equal(clean.labs.length, 1);
+  assert.equal(clean.draft.labId, a.id);
+  assert.equal(clean.draft.refOrigin.glu, 'saved');
+  assert.deepEqual(clean.labs[0].refs.hgb.male, { lo: 130, hi: 170 });
+});

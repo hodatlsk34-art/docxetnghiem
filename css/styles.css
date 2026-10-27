@@ -559,3 +559,15 @@ body.dragging::after {
 .qa dd.lv-ok .fd-g { color: var(--ok); } .qa dd.lv-warn .fd-g { color: var(--warn); } .qa dd.lv-bad .fd-g { color: var(--bad); } .qa dd.lv-crit .fd-g { color: var(--crit); }
 @media (max-width: 480px) { .qa { grid-template-columns: 1fr; gap: 2px; } .qa dd { margin-bottom: 8px; } }
 @media print { .ask { display: block; } .ask[open] summary, .ask summary { list-style: none; } }
+
+/* ---------- bộ ngưỡng theo nơi xét nghiệm ---------- */
+.labcard { gap: 8px; }
+.labcard .lbl { display: flex; align-items: center; gap: 6px; }
+.labcard .lbl .ic { width: 18px; height: 18px; color: var(--primary); }
+.chip.ref.saved { background: var(--g-bio-soft); color: var(--g-bio); }
+.ref-note { color: var(--g-bio); }
+.ref-usage { display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
+.ref-usage .ic { width: 16px; height: 16px; margin-top: 2px; }
+.labitem { border-top: 1px solid var(--line); padding: 10px 0; }
+.labitem summary { cursor: pointer; }
+.labitem > * + * { margin-top: 8px; }

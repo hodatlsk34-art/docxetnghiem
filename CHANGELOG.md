@@ -1,5 +1,12 @@
 # Nhật ký thay đổi
 
+## 2.6.0 — 27/10/2026
+- **Bộ ngưỡng theo nơi xét nghiệm**: app nhận tên bệnh viện/phòng khám ở đầu phiếu, tự lưu khoảng tham chiếu in trên phiếu và tự cập nhật mỗi lần đọc phiếu mới của cùng nơi.
+- Tự áp dụng bộ ngưỡng đã lưu cho chỉ số mà phiếu không in ngưỡng, cho nhập tay (chọn "Nơi xét nghiệm"), và khi đổi giới tính.
+- Đọc thêm kiểu ghi ngưỡng: ngưỡng riêng nam/nữ trong một ô ("Nam: 130–170; Nữ: 120–150"), "≤ 40", "≥ 60", "4,0 đến 10,0", có ngoặc.
+- Mỗi chỉ số ghi rõ đang dùng ngưỡng nào (in trên phiếu / đã lưu / tự nhập / chuẩn của app); màn Kết quả tóm tắt số chỉ số theo từng loại ngưỡng.
+- Quản lý bộ ngưỡng (xem, đổi tên, xóa) trong Cài đặt.
+
 ## 2.5.0 — 27/10/2026
 - **Nhận định tổng quát** đầu màn Kết quả: mức cần khám (khẩn / khám sớm / theo dõi / chưa thấy bất thường), vấn đề chính xếp theo mức độ, liên quan giữa các nhóm, điều đáng yên tâm, chuyên khoa có thể cần khám, lời khuyên lối sống chung, câu hỏi nên hỏi bác sĩ.
 - **Nhận định từng nhóm dạng hỏi–đáp** (ví dụ "Có thiếu máu không? — Có, mức vừa theo WHO").
