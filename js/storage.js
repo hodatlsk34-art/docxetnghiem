@@ -10,7 +10,7 @@ export const MAX_HISTORY = 60;
 export function emptyState() {
   return {
     v: SCHEMA,
-    profile: { sex: '', group: 'adult', ageBand: '', trimester: 0 },
+    profile: { sex: '', group: 'adult', ageBand: '', trimester: 0, age: null },
     draft: { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] },
     history: []
   };
@@ -21,13 +21,14 @@ const okNum = x => x === null || (typeof x === 'number' && Number.isFinite(x));
 
 const AGE_IDS = ['lt6m', '6-23m', '2-4y', '5-9y', '10-11y', '12-14y', '15-17y'];
 export function cleanProfile(p) {
-  const out = { sex: '', group: 'adult', ageBand: '', trimester: 0 };
+  const out = { sex: '', group: 'adult', ageBand: '', trimester: 0, age: null };
   if (!isObj(p)) return out;
   if (['male', 'female', ''].includes(p.sex)) out.sex = p.sex;
   if (['adult', 'child', 'pregnant'].includes(p.group)) out.group = p.group;
   if (out.group === 'child' && AGE_IDS.includes(p.ageBand)) out.ageBand = p.ageBand;
   if (out.group === 'pregnant' && [1, 2, 3].includes(Number(p.trimester))) out.trimester = Number(p.trimester);
   if (out.group === 'pregnant') out.sex = 'female';
+  if (out.group === 'adult' && Number.isInteger(p.age) && p.age >= 18 && p.age <= 120) out.age = p.age;
   return out;
 }
 

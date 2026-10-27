@@ -1,5 +1,11 @@
 # Nhật ký thay đổi
 
+## 2.3.0 — 27/10/2026
+- **Đọc liên kết theo 9 nhóm**: hồng cầu & thiếu máu, bạch cầu & viêm, đường huyết, mỡ máu, gan mật, thận & điện giải, tuyến giáp, nước tiểu, miễn dịch viêm gan B. Mỗi nhóm có mức độ, mẫu hình gợi ý, chỉ số tính thêm, xét nghiệm bác sĩ có thể cân nhắc.
+- **Chỉ số tính thêm có nguồn**: Mentzer, eGFR CKD-EPI 2021 (cần nhập tuổi), urê/creatinin, canxi hiệu chỉnh, De Ritis, non-HDL, tỷ lệ Cholesterol/HDL, LDL Friedewald, đường huyết trung bình ước tính, mức tăng men gan theo ACG.
+- **Kiểm tra số liệu không khớp** (MCV–HCT–RBC, MCH, MCHC, tổng bạch cầu, HDL/LDL/Cholesterol, bilirubin, albumin/protein) ở màn kết quả và ngay khi xác nhận ảnh.
+- Tab "Liên quan" ở chi tiết chỉ số hiển thị nhóm đọc liên kết. Thêm ô tuổi cho người lớn.
+
 ## 2.2.0 — 27/10/2026
 - Ngưỡng riêng cho **trẻ em** theo nhóm tuổi: Hb (WHO 2024), cholesterol, LDL, triglycerid, HDL (NHLBI 2011); đường huyết, HbA1c dùng tiêu chuẩn ADA như người lớn.
 - Ngưỡng riêng cho **thai phụ** theo giai đoạn: Hb (WHO 2024), đường huyết đói 5,1 mmol/L (IADPSG), TSH ≤ 4,0 mU/L (ATA 2017); HbA1c và mỡ máu ghi "Không áp dụng".
