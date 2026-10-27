@@ -91,7 +91,8 @@ try {
     await shot(page, '02-nhap');
     await page.click('.sticky-act .btn');
     await page.waitForSelector('.summary');
-    check('tổ hợp thiếu sắt xuất hiện', await page.isVisible('text=Gợi ý thiếu máu do thiếu sắt'));
+    check('đọc liên kết: nhóm thiếu máu → gợi ý thiếu sắt', await page.isVisible('.panel >> text=Gợi ý thiếu sắt'));
+    check('đọc liên kết: có chỉ số tính thêm', await page.isVisible('text=Non-HDL cholesterol'));
     check('không có câu "Phù hợp đái tháo đường"', !(await page.isVisible('text=Phù hợp đái tháo đường')));
     check('không cuộn ngang #ketqua có dữ liệu', await noHScroll(page));
     await shot(page, '03-ket-qua');
@@ -172,6 +173,7 @@ try {
     await page.click('.sticky-act .btn');
     await page.waitForSelector('.summary');
     check('áp dụng chỉ số từ ảnh', /Thêm \d+/.test(btnText), btnText);
+    check('kết quả từ ảnh có phần đọc liên kết', await page.isVisible('.linked .panel'));
     await shot(page, '09-ket-qua-tu-anh');
     check('không lỗi JS (OCR)', page.errors.length === 0, page.errors.join(' | '));
     await ctx.close();
