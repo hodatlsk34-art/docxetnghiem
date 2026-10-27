@@ -1,5 +1,11 @@
 # Nhật ký thay đổi
 
+## 2.4.0 — 27/10/2026
+- **Tải file kết quả**: PDF bệnh viện gửi (đọc trực tiếp chữ, kể cả phiếu in hai cột và tên xét nghiệm xuống dòng), PDF dạng scan (tự nhận dạng chữ), ảnh, Excel, CSV, TXT; chọn nhiều file; kéo thả trên máy tính.
+- **Chia sẻ file từ Zalo/Gmail/Tệp vào app** (Android, app đã cài).
+- **Tự cập nhật**: bản mới kích hoạt ngay, app tự tải lại ở thời điểm an toàn (không khi đang nhập hay đang đọc file) và báo "Đã cập nhật"; kiểm tra bản mới mỗi khi mở lại app.
+- Bỏ dòng tỷ lệ % của công thức bạch cầu, bỏ dòng tiêu đề bảng khi đọc phiếu.
+
 ## 2.3.0 — 27/10/2026
 - **Đọc liên kết theo 9 nhóm**: hồng cầu & thiếu máu, bạch cầu & viêm, đường huyết, mỡ máu, gan mật, thận & điện giải, tuyến giáp, nước tiểu, miễn dịch viêm gan B. Mỗi nhóm có mức độ, mẫu hình gợi ý, chỉ số tính thêm, xét nghiệm bác sĩ có thể cân nhắc.
 - **Chỉ số tính thêm có nguồn**: Mentzer, eGFR CKD-EPI 2021 (cần nhập tuổi), urê/creatinin, canxi hiệu chỉnh, De Ritis, non-HDL, tỷ lệ Cholesterol/HDL, LDL Friedewald, đường huyết trung bình ước tính, mức tăng men gan theo ACG.

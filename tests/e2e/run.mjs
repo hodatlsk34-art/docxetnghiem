@@ -18,6 +18,10 @@ const server = http.createServer((req, res) => {
   let f = path.join(ROOT, u.slice(BASE.length));
   if (fs.existsSync(f) && fs.statSync(f).isDirectory()) f = path.join(f, 'index.html');
   if (!f.startsWith(ROOT) || !fs.existsSync(f)) { res.writeHead(404); return res.end('nf'); }
+  if (globalThis.SW_BUMP && f.endsWith('sw.js')) {
+    res.writeHead(200, { 'Content-Type': 'text/javascript' });
+    return res.end(fs.readFileSync(f, 'utf8').replace(/const VERSION = '([\d.]+)'/, `const VERSION = '${globalThis.SW_BUMP}'`));
+  }
   res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' });
   fs.createReadStream(f).pipe(res);
 }).listen(0);
@@ -56,7 +60,7 @@ try {
     const { page, ctx } = await newPage(w, 760);
     await page.goto(URLB);
     await page.waitForSelector('.hero');
-    check(`trang chủ hiển thị (${w}px)`, await page.isVisible('text=Chụp ảnh phiếu xét nghiệm'));
+    check(`trang chủ hiển thị (${w}px)`, await page.isVisible('text=Chụp ảnh hoặc tải file kết quả'));
     for (const r of ['', 'nhap', 'tracuu', 'lichsu', 'huongdan', 'caidat', 'chitiet/hgb']) {
       await page.goto(URLB + '#' + r); await page.waitForTimeout(120);
       check(`không cuộn ngang #${r || 'home'} (${w}px)`, await noHScroll(page));
@@ -179,6 +183,28 @@ try {
     await ctx.close();
   } else results.push('SKIP  OCR (đặt TESSERACT_LOCAL hoặc OCR_NETWORK=1)');
 
+  // 4b. Tải file: PDF có chữ (1 cột, 2 cột), CSV, Excel, PDF scan
+  if (process.env.TESSERACT_LOCAL || process.env.OCR_NETWORK) {
+    const cases = [['phieu-mau-1cot.pdf', 20, 'đọc trực tiếp chữ'], ['phieu-mau-2cot.pdf', 20, 'đọc trực tiếp chữ'], ['phieu-mau.csv', 5, 'bảng tính'], ['phieu-mau.xlsx', 3, 'bảng tính'], ['phieu-mau-scan.pdf', 18, 'Nhận dạng chữ']];
+    for (const [f, min, note] of cases) {
+      const { page, ctx } = await newPage();
+      await page.goto(URLB + '#nhap'); await page.waitForSelector('#in-gal', { state: 'attached' });
+      await page.setInputFiles('#in-gal', path.join(ROOT, 'tests/fixtures/', f));
+      await page.waitForSelector('.ocr-list, .center-msg h2', { timeout: 180000 });
+      const n = await page.locator('.ocr-row').count();
+      const txt = await page.textContent('.card.note');
+      check(`tải file ${f}: đọc được ≥ ${min} chỉ số`, n >= min, `${n} chỉ số; ${page.errors.join(' | ')}`);
+      check(`tải file ${f}: báo đúng cách đọc`, txt.includes(note), txt.slice(0, 80));
+      if (f === 'phieu-mau-2cot.pdf') {
+        await shot(page, '13-tai-pdf');
+        await page.click('.sticky-act .btn'); await page.waitForSelector('.summary');
+        check('PDF → kết quả có đọc liên kết', await page.isVisible('.linked .panel'));
+      }
+      check(`không lỗi JS (${f})`, page.errors.length === 0, page.errors.join(' | '));
+      await ctx.close();
+    }
+  }
+
   // 5. Desktop + chế độ tối
   {
     const { page, ctx } = await newPage(1280, 860, { dark: true });
@@ -229,6 +255,27 @@ try {
     check('hiện thông báo ngoại tuyến', await page.isVisible('#offline'));
     const manifestOk = await page.evaluate(async () => { const m = await (await fetch('manifest.webmanifest')).json(); return m.icons.length >= 3 && m.start_url === './'; });
     check('manifest hợp lệ (đường dẫn con)', manifestOk);
+    // Nhận file chia sẻ (Android share target)
+    await ctx.setOffline(false);
+    await page.reload(); await page.waitForSelector('.hero');
+    await page.evaluate(async () => {
+      const fd = new FormData();
+      fd.append('files', new File(['Tên;Kết quả\nHGB;128\nGlucose;5,4'], 'kq.csv', { type: 'text/csv' }));
+      const r = await fetch('./?share-target', { method: 'POST', body: fd, redirect: 'manual' });
+      window.__shareStatus = r.type;
+    });
+    await page.goto(URLB + '#nhan-file');
+    await page.waitForSelector('.ocr-list', { timeout: 20000 }).catch(() => {});
+    check('nhận file chia sẻ từ ứng dụng khác', (await page.locator('.ocr-row').count()) === 2);
+    // Tự cập nhật: máy chủ có bản sw.js mới → app tự tải lại và báo đã cập nhật
+    await page.goto(URLB + '#'); await page.waitForSelector('.hero');
+    globalThis.SW_BUMP = '9.9.9';
+    page.on('console', m => { if (process.env.DEBUG_SW) console.log('console:', m.text()); });
+    const upd = await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update().then(() => 'ok', e => 'err ' + e.message)));
+    if (process.env.DEBUG_SW) console.log('update()', upd, await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => [!!r.installing, !!r.waiting, !!r.active, location.hash, document.activeElement && document.activeElement.tagName])));
+    await page.waitForSelector('text=Đã cập nhật lên phiên bản mới 9.9.9', { timeout: 20000 }).catch(() => {});
+    check('app tự cập nhật khi có bản mới', await page.isVisible('text=Đã cập nhật lên phiên bản mới 9.9.9'));
+    globalThis.SW_BUMP = null;
     const cdp = await ctx.newCDPSession(page);
     await ctx.setOffline(false);
     await page.reload(); await page.waitForSelector('.hero');

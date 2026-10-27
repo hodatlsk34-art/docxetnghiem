@@ -526,3 +526,10 @@ html.standalone body::before { content: ""; position: fixed; inset: 0 0 auto; he
 .checks .row { color: var(--warn); }
 .checks ul { display: flex; flex-direction: column; gap: 4px; font-size: .92rem; }
 @media print { .panel { break-inside: avoid; } }
+
+/* kéo thả file */
+body.dragging::after {
+  content: "Thả file kết quả vào đây (PDF, ảnh, Excel, CSV)"; position: fixed; inset: 12px; z-index: 90;
+  display: grid; place-items: center; border: 3px dashed var(--primary); border-radius: 18px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); color: var(--primary-ink); font-weight: 700; font-size: 1.2rem; pointer-events: none;
+}
