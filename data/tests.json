@@ -1,5 +1,5 @@
 {
- "version": "2.0.0",
+ "version": "2.2.0",
  "updated": "2026-10-27",
  "groups": [
   {
@@ -114,7 +114,112 @@
     "tip": "Hb dưới 70 g/L là thiếu máu nặng, cần đi khám ngay. Mệt, chóng mặt, khó thở khi gắng sức là dấu hiệu cần lưu ý."
    },
    "note": "Một số phòng xét nghiệm ghi đơn vị g/dL (chia 10: 130 g/L = 13 g/dL).",
-   "source": "lab-adult"
+   "source": "lab-adult",
+   "special": {
+    "child": {
+     "mode": "rules",
+     "source": "who-hb-2024",
+     "labels": {
+      "low": "Dưới ngưỡng thiếu máu (WHO)",
+      "normal": "Trên ngưỡng thiếu máu (WHO)"
+     },
+     "rules": [
+      {
+       "ages": [
+        "6-23m"
+       ],
+       "ref": {
+        "all": [
+         105,
+         null
+        ]
+       }
+      },
+      {
+       "ages": [
+        "2-4y"
+       ],
+       "ref": {
+        "all": [
+         110,
+         null
+        ]
+       }
+      },
+      {
+       "ages": [
+        "5-9y",
+        "10-11y"
+       ],
+       "ref": {
+        "all": [
+         115,
+         null
+        ]
+       }
+      },
+      {
+       "ages": [
+        "12-14y"
+       ],
+       "ref": {
+        "all": [
+         120,
+         null
+        ]
+       }
+      },
+      {
+       "ages": [
+        "15-17y"
+       ],
+       "ref": {
+        "male": [
+         130,
+         null
+        ],
+        "female": [
+         120,
+         null
+        ]
+       }
+      }
+     ]
+    },
+    "pregnant": {
+     "mode": "rules",
+     "source": "who-hb-2024",
+     "labels": {
+      "low": "Dưới ngưỡng thiếu máu thai kỳ (WHO)",
+      "normal": "Trên ngưỡng thiếu máu thai kỳ (WHO)"
+     },
+     "rules": [
+      {
+       "tri": [
+        1,
+        3
+       ],
+       "ref": {
+        "all": [
+         110,
+         null
+        ]
+       }
+      },
+      {
+       "tri": [
+        2
+       ],
+       "ref": {
+        "all": [
+         105,
+         null
+        ]
+       }
+      }
+     ]
+    }
+   }
   },
   {
    "id": "hct",
@@ -550,7 +655,44 @@
     "tip": "Có run, vã mồ hôi, lơ mơ hoặc giá trị dưới 2.8 mmol/L: gọi cấp cứu 115 hoặc đến cơ sở y tế ngay."
    },
    "note": "Ngưỡng theo Hiệp hội Đái tháo đường Hoa Kỳ (ADA), được Bộ Y tế Việt Nam áp dụng. Đơn vị mg/dL = mmol/L × 18.",
-   "source": "ada"
+   "source": "ada",
+   "special": {
+    "child": {
+     "mode": "same",
+     "source": "ada-child"
+    },
+    "pregnant": {
+     "mode": "rules",
+     "source": "iadpsg",
+     "note": "Ngưỡng 5,1 mmol/L dùng trong nghiệm pháp dung nạp glucose 75 g (thường làm ở tuần 24–28). Kết quả cần bác sĩ sản khoa đánh giá.",
+     "rules": [
+      {
+       "bands": [
+        {
+         "lt": 3.9,
+         "label": "Hạ đường huyết",
+         "level": "bad"
+        },
+        {
+         "lt": 5.1,
+         "label": "Dưới ngưỡng ĐTĐ thai kỳ",
+         "level": "ok"
+        },
+        {
+         "lt": 7.0,
+         "label": "Đạt ngưỡng đái tháo đường thai kỳ — cần bác sĩ sản khoa đánh giá",
+         "level": "bad"
+        },
+        {
+         "lt": 999,
+         "label": "Đường huyết cao — cần bác sĩ đánh giá sớm",
+         "level": "bad"
+        }
+       ]
+      }
+     ]
+    }
+   }
   },
   {
    "id": "hba1c",
@@ -595,7 +737,17 @@
     "tip": "Thường không đáng lo."
    },
    "note": "Thiếu máu, thalassemia, bệnh thận nặng, thai kỳ có thể làm HbA1c sai lệch.",
-   "source": "ada"
+   "source": "ada",
+   "special": {
+    "child": {
+     "mode": "same",
+     "source": "ada-child"
+    },
+    "pregnant": {
+     "mode": "na",
+     "reason": "HbA1c không dùng để chẩn đoán đái tháo đường thai kỳ. Bác sĩ sẽ đánh giá bằng nghiệm pháp dung nạp glucose."
+    }
+   }
   },
   {
    "id": "chol",
@@ -644,7 +796,45 @@
     "tip": "Thấp nhẹ thường không đáng lo."
    },
    "note": "Đơn vị mg/dL = mmol/L × 38.7.",
-   "source": "ncep"
+   "source": "ncep",
+   "special": {
+    "child": {
+     "mode": "rules",
+     "source": "nhlbi-2011",
+     "rules": [
+      {
+       "ages": [
+        "2-4y",
+        "5-9y",
+        "10-11y",
+        "12-14y",
+        "15-17y"
+       ],
+       "bands": [
+        {
+         "lt": 4.4,
+         "label": "Chấp nhận được",
+         "level": "ok"
+        },
+        {
+         "lt": 5.17,
+         "label": "Cao giới hạn",
+         "level": "warn"
+        },
+        {
+         "lt": 999,
+         "label": "Cao",
+         "level": "bad"
+        }
+       ]
+      }
+     ]
+    },
+    "pregnant": {
+     "mode": "na",
+     "reason": "Mỡ máu tăng sinh lý khi mang thai nên app không phân loại. Hỏi bác sĩ sản khoa nếu cần."
+    }
+   }
   },
   {
    "id": "tg",
@@ -700,7 +890,66 @@
     "tip": "Không cần lo lắng."
    },
    "note": "Nên nhịn ăn 9–12 giờ trước khi lấy máu. mg/dL = mmol/L × 88.5.",
-   "source": "ncep"
+   "source": "ncep",
+   "special": {
+    "child": {
+     "mode": "rules",
+     "source": "nhlbi-2011",
+     "rules": [
+      {
+       "ages": [
+        "2-4y",
+        "5-9y"
+       ],
+       "bands": [
+        {
+         "lt": 0.85,
+         "label": "Chấp nhận được",
+         "level": "ok"
+        },
+        {
+         "lt": 1.13,
+         "label": "Cao giới hạn",
+         "level": "warn"
+        },
+        {
+         "lt": 999,
+         "label": "Cao",
+         "level": "bad"
+        }
+       ]
+      },
+      {
+       "ages": [
+        "10-11y",
+        "12-14y",
+        "15-17y"
+       ],
+       "bands": [
+        {
+         "lt": 1.02,
+         "label": "Chấp nhận được",
+         "level": "ok"
+        },
+        {
+         "lt": 1.47,
+         "label": "Cao giới hạn",
+         "level": "warn"
+        },
+        {
+         "lt": 999,
+         "label": "Cao",
+         "level": "bad"
+        }
+       ]
+      }
+     ]
+    },
+    "pregnant": {
+     "mode": "na",
+     "reason": "Mỡ máu tăng sinh lý khi mang thai nên app không phân loại. Hỏi bác sĩ sản khoa nếu cần."
+    }
+   }
   },
   {
    "id": "hdl",
@@ -739,7 +988,45 @@
     ],
     "tip": "Tăng vận động, bỏ thuốc lá, giảm cân giúp tăng HDL."
    },
-   "source": "ncep"
+   "source": "ncep",
+   "special": {
+    "child": {
+     "mode": "rules",
+     "source": "nhlbi-2011",
+     "rules": [
+      {
+       "ages": [
+        "2-4y",
+        "5-9y",
+        "10-11y",
+        "12-14y",
+        "15-17y"
+       ],
+       "bands": [
+        {
+         "lt": 1.04,
+         "label": "Thấp",
+         "level": "bad"
+        },
+        {
+         "lt": 1.17,
+         "label": "Giới hạn thấp",
+         "level": "warn"
+        },
+        {
+         "lt": 99,
+         "label": "Chấp nhận được",
+         "level": "ok"
+        }
+       ]
+      }
+     ]
+    },
+    "pregnant": {
+     "mode": "na",
+     "reason": "Mỡ máu tăng sinh lý khi mang thai nên app không phân loại. Hỏi bác sĩ sản khoa nếu cần."
+    }
+   }
   },
   {
    "id": "ldl",
@@ -797,7 +1084,45 @@
     "tip": "Thường là tốt."
    },
    "note": "Ngưỡng phân loại theo NCEP ATP III cho người chưa có bệnh tim mạch.",
-   "source": "ncep"
+   "source": "ncep",
+   "special": {
+    "child": {
+     "mode": "rules",
+     "source": "nhlbi-2011",
+     "rules": [
+      {
+       "ages": [
+        "2-4y",
+        "5-9y",
+        "10-11y",
+        "12-14y",
+        "15-17y"
+       ],
+       "bands": [
+        {
+         "lt": 2.84,
+         "label": "Chấp nhận được",
+         "level": "ok"
+        },
+        {
+         "lt": 3.36,
+         "label": "Cao giới hạn",
+         "level": "warn"
+        },
+        {
+         "lt": 999,
+         "label": "Cao",
+         "level": "bad"
+        }
+       ]
+      }
+     ]
+    },
+    "pregnant": {
+     "mode": "na",
+     "reason": "Mỡ máu tăng sinh lý khi mang thai nên app không phân loại. Hỏi bác sĩ sản khoa nếu cần."
+    }
+   }
   },
   {
    "id": "ure",
@@ -1456,7 +1781,12 @@
     "tip": ""
    },
    "note": "hs-CRP (CRP siêu nhạy) dùng đánh giá nguy cơ tim mạch: < 1 thấp, 1–3 trung bình, > 3 mg/L cao.",
-   "source": "crp"
+   "source": "crp",
+   "special": {
+    "child": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "ferritin",
@@ -1591,7 +1921,15 @@
     "tip": "Tiếp xúc nắng sáng hợp lý; bổ sung vitamin D theo hướng dẫn bác sĩ."
    },
    "note": "Ngưỡng \"đủ\" còn tranh luận: có tổ chức dùng 20 ng/mL, có tổ chức dùng 30 ng/mL. nmol/L = ng/mL × 2.5.",
-   "source": "endo-vitd"
+   "source": "endo-vitd",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "b12",
@@ -1664,7 +2002,15 @@
     ],
     "tip": "Thường ít ý nghĩa đơn độc."
    },
-   "source": "lab-adult"
+   "source": "lab-adult",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "u_sg",
@@ -1700,7 +2046,15 @@
     ],
     "tip": "Thường do uống nhiều nước."
    },
-   "source": "lab-adult"
+   "source": "lab-adult",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "u_glu",
@@ -1917,7 +2271,15 @@
     "tip": "Thường que thử không phân biệt được mức thấp."
    },
    "note": "Que thử thường ghi \"Normal\" hoặc 3.2–16 µmol/L (0.2–1 mg/dL) là bình thường.",
-   "source": "lab-adult"
+   "source": "lab-adult",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "tsh",
@@ -1956,7 +2318,24 @@
     "tip": "TSH thấp: có thể hồi hộp, sút cân, run tay, nóng nảy. Đọc cùng FT4, FT3."
    },
    "note": "Ngưỡng ở thai phụ, người cao tuổi khác người bình thường.",
-   "source": "lab-adult"
+   "source": "lab-adult",
+   "special": {
+    "pregnant": {
+     "mode": "rules",
+     "source": "ata-2017",
+     "note": "TSH thấp trong 3 tháng đầu có thể là bình thường do hormone thai kỳ. Bác sĩ sẽ đánh giá cùng FT4.",
+     "rules": [
+      {
+       "ref": {
+        "all": [
+         null,
+         4.0
+        ]
+       }
+      }
+     ]
+    }
+   }
   },
   {
    "id": "ft4",
@@ -2098,7 +2477,15 @@
     ],
     "tip": "Nếu HBsAg âm tính: nên tiêm vắc-xin viêm gan B."
    },
-   "source": "hbv"
+   "source": "hbv",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   },
   {
    "id": "antihcv",
@@ -2214,7 +2601,15 @@
     ],
     "tip": "Nếu chậm kinh mà kết quả âm tính, thử lại sau vài ngày."
    },
-   "source": "hcg"
+   "source": "hcg",
+   "special": {
+    "child": {
+     "mode": "same"
+    },
+    "pregnant": {
+     "mode": "same"
+    }
+   }
   }
  ],
  "review": {
@@ -2232,6 +2627,11 @@
   "crp": "Ngưỡng CRP thường dùng trong thực hành; không đặc hiệu cho bệnh nào.",
   "hbv": "Hướng dẫn chẩn đoán viêm gan B/C (Bộ Y tế Việt Nam, WHO) — dùng cho cách hiểu dương/âm tính.",
   "hcg": "Ngưỡng β-hCG định lượng thường dùng trong chẩn đoán thai sớm.",
-  "critical": "Giá trị báo động (critical values) phổ biến của phòng xét nghiệm; mỗi cơ sở có danh sách riêng."
+  "critical": "Giá trị báo động (critical values) phổ biến của phòng xét nghiệm; mỗi cơ sở có danh sách riêng.",
+  "who-hb-2024": "WHO (2024) — Guideline on haemoglobin cutoffs to define anaemia in individuals and populations: ngưỡng Hb theo tuổi và theo tam cá nguyệt thai kỳ.",
+  "nhlbi-2011": "NHLBI Expert Panel (2011) — ngưỡng lipid máu cho trẻ em và vị thành niên (đổi từ mg/dL sang mmol/L).",
+  "iadpsg": "IADPSG/WHO 2013 — ngưỡng đường huyết đói 5,1 mmol/L trong chẩn đoán đái tháo đường thai kỳ (nghiệm pháp 75 g, thường tuần 24–28), đang dùng phổ biến tại Việt Nam.",
+  "ata-2017": "American Thyroid Association (2017) — dùng ngưỡng trên TSH 4,0 mU/L cho thai phụ khi không có ngưỡng riêng theo tam cá nguyệt.",
+  "ada-child": "ADA — tiêu chuẩn chẩn đoán đái tháo đường (đường huyết đói, HbA1c) áp dụng cả cho trẻ em và vị thành niên."
  }
 }

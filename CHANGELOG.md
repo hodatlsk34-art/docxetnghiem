@@ -1,5 +1,12 @@
 # Nhật ký thay đổi
 
+## 2.2.0 — 27/10/2026
+- Ngưỡng riêng cho **trẻ em** theo nhóm tuổi: Hb (WHO 2024), cholesterol, LDL, triglycerid, HDL (NHLBI 2011); đường huyết, HbA1c dùng tiêu chuẩn ADA như người lớn.
+- Ngưỡng riêng cho **thai phụ** theo giai đoạn: Hb (WHO 2024), đường huyết đói 5,1 mmol/L (IADPSG), TSH ≤ 4,0 mU/L (ATA 2017); HbA1c và mỡ máu ghi "Không áp dụng".
+- Chọn nhóm tuổi / giai đoạn thai kỳ ở màn Đọc phiếu; ảnh phiếu có năm sinh dưới 18 tuổi → gợi ý áp dụng ngưỡng trẻ em.
+- Chỉ số thay đổi nhiều theo tuổi/tháng thai (bạch cầu, tiểu cầu, men gan, creatinin…) vẫn cần ngưỡng in trên phiếu.
+- Không cảnh báo giá trị báo động của người lớn cho trẻ dưới 6 tháng.
+
 ## 2.1.0 — 27/10/2026
 - Thẻ "Cài app lên điện thoại" ở trang chủ: nút "Cài đặt ngay" trên Android/máy tính; hướng dẫn từng bước cho iPhone; nhận biết khi mở trong Zalo/Facebook/Messenger và hướng dẫn mở bằng trình duyệt.
 - Hướng dẫn cài trong mục Hướng dẫn và Cài đặt; tự ẩn khi đã chạy như app.

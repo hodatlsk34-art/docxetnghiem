@@ -114,6 +114,30 @@ try {
     await ctx.close();
   }
 
+  // 2b. Trẻ em / thai phụ
+  {
+    const { page, ctx } = await newPage();
+    await page.goto(URLB + '#nhap'); await page.waitForSelector('.profile');
+    await page.click('text=Nữ');
+    await page.click('text=Trẻ em (dưới 18 tuổi)');
+    check('chọn trẻ em → hiện chọn tuổi', await page.isVisible('text=Tuổi của trẻ'));
+    await page.click('text=5–9 tuổi');
+    await page.fill('#add-q', 'hgb'); await page.press('#add-q', 'Enter');
+    await page.fill('#in-hgb', '112');
+    check('Hb 112 trẻ 5–9 tuổi → dưới ngưỡng thiếu máu', (await page.textContent('#st-hgb')).includes('thiếu máu'));
+    await page.click('text=Đang mang thai');
+    check('chọn mang thai → hiện giai đoạn', await page.isVisible('text=Giai đoạn thai kỳ'));
+    await page.click('text=3 tháng giữa (tuần 14–27)');
+    await page.fill('#in-hgb', '107');
+    check('Hb 107 thai 3 tháng giữa → trên ngưỡng', (await page.textContent('#st-hgb')).includes('Trên ngưỡng'));
+    check('không cuộn ngang (đối tượng)', await noHScroll(page));
+    await shot(page, '12-thai-phu');
+    await page.goto(URLB + '#chitiet/hgb'); await page.waitForSelector('.det-head');
+    check('chi tiết ghi nguồn WHO', (await page.textContent('.result')).includes('WHO'));
+    check('không lỗi JS (đối tượng)', page.errors.length === 0, page.errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. localStorage độc hại / hỏng
   {
     const { page, ctx } = await newPage();

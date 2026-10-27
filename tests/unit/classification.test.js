@@ -72,3 +72,59 @@ test('tổ hợp bỏ qua khi chỉ số chưa đủ thông tin', () => {
   const ev = evaluateRules({ hgb: classify(BY.hgb, '105', X), mcv: classify(BY.mcv, '72', X), ferritin: classify(BY.ferritin, '9', X) });
   assert.ok(ev.skipped.includes('iron-def'));
 });
+
+// ---------- trẻ em & thai phụ ----------
+const child = (ageBand, sex = 'female') => ({ sex, group: 'child', ageBand });
+const preg = trimester => ({ sex: 'female', group: 'pregnant', trimester });
+
+test('Hb trẻ em theo tuổi (WHO 2024)', () => {
+  assert.equal(classify(BY.hgb, '104', child('6-23m')).state, 'low');
+  assert.equal(classify(BY.hgb, '105', child('6-23m')).state, 'normal');
+  assert.equal(classify(BY.hgb, '109', child('2-4y')).state, 'low');
+  assert.equal(classify(BY.hgb, '114', child('5-9y')).state, 'low');
+  assert.equal(classify(BY.hgb, '115', child('10-11y')).state, 'normal');
+  assert.equal(classify(BY.hgb, '119', child('12-14y', 'male')).state, 'low');
+  assert.equal(classify(BY.hgb, '125', child('15-17y', 'male')).state, 'low');
+  assert.equal(classify(BY.hgb, '125', child('15-17y', 'female')).state, 'normal');
+  assert.equal(classify(BY.hgb, '125', child('15-17y', '')).state, 'insufficient');
+  assert.equal(classify(BY.hgb, '125', child('')).state, 'insufficient');
+  assert.equal(classify(BY.hgb, '125', child('lt6m')).state, 'insufficient');
+  assert.equal(classify(BY.hgb, '104', child('6-23m')).basis, 'special');
+});
+test('Hb thai phụ theo giai đoạn (WHO 2024)', () => {
+  assert.equal(classify(BY.hgb, '108', preg(1)).state, 'low');
+  assert.equal(classify(BY.hgb, '108', preg(2)).state, 'normal');
+  assert.equal(classify(BY.hgb, '104', preg(2)).state, 'low');
+  assert.equal(classify(BY.hgb, '109', preg(3)).state, 'low');
+  assert.equal(classify(BY.hgb, '108', preg(0)).state, 'insufficient');
+  assert.equal(classify(BY.hgb, '60', preg(2)).state, 'critical');
+});
+test('mỡ máu trẻ em (NHLBI)', () => {
+  assert.equal(classify(BY.chol, '4.3', child('5-9y')).level, 'ok');
+  assert.equal(classify(BY.chol, '4.5', child('5-9y')).level, 'warn');
+  assert.equal(classify(BY.chol, '5.2', child('5-9y')).level, 'bad');
+  assert.equal(classify(BY.tg, '0.9', child('5-9y')).level, 'warn');
+  assert.equal(classify(BY.tg, '0.9', child('12-14y')).level, 'ok');
+  assert.equal(classify(BY.hdl, '1.0', child('12-14y')).dir, 'low');
+  assert.equal(classify(BY.chol, '4.3', child('6-23m')).state, 'insufficient');
+});
+test('thai phụ: đường huyết đói, HbA1c, mỡ máu, TSH', () => {
+  assert.equal(classify(BY.glu, '5.0', preg(2)).level, 'ok');
+  assert.equal(classify(BY.glu, '5.1', preg(2)).level, 'bad');
+  assert.match(classify(BY.glu, '5.3', preg(0)).label, /thai kỳ/);
+  assert.equal(classify(BY.hba1c, '5.9', preg(2)).state, 'insufficient');
+  assert.equal(classify(BY.chol, '6.5', preg(3)).label, 'Không áp dụng');
+  assert.equal(classify(BY.tsh, '4.2', preg(1)).state, 'high');
+  assert.equal(classify(BY.tsh, '0.05', preg(1)).state, 'normal');
+});
+test('trẻ em: đường huyết như người lớn, chỉ số khác cần ngưỡng phiếu', () => {
+  assert.equal(classify(BY.glu, '7.2', child('12-14y')).basis, 'clinical');
+  assert.equal(classify(BY.wbc, '12', child('5-9y')).state, 'insufficient');
+  assert.equal(classify(BY.wbc, '12', child('5-9y'), { lo: 5, hi: 14.5 }).state, 'normal');
+  assert.equal(classify(BY.u_nit, 'pos', child('5-9y')).state, 'qual-pos');
+});
+test('tổ hợp thiếu sắt dùng ngưỡng trẻ em', () => {
+  const p = child('5-9y');
+  const ev = evaluateRules({ hgb: classify(BY.hgb, '105', p), mcv: classify(BY.mcv, '70', p, { lo: 75, hi: 95 }), ferritin: classify(BY.ferritin, '8', p, { lo: 12, hi: 150 }) });
+  assert.ok(ev.matched.some(r => r.id === 'iron-def'));
+});

@@ -28,7 +28,7 @@ test('làm sạch: bỏ khóa lạ, kiểu sai, giá trị định tính lạ', 
     draft: { values: { hgb: 105, glu: '5.4', u_nit: '<img src=x onerror=alert(1)>', __proto__x: '1', ast: 'x'.repeat(50) }, labRefs: { glu: { lo: 'a', hi: 6 }, ast: { lo: null, hi: 40 }, alt: { lo: 50, hi: 40 } } },
     history: [{ id: '"><svg onload=alert(1)>', at: '2026-01-01', values: { glu: '5' } }, { id: 'abc-1', at: 'not a date', values: { glu: '5' } }, { id: 'ok-1', at: '2026-01-02T00:00:00Z', values: { glu: '5' } }]
   }, DATA.tests);
-  assert.deepEqual(s.profile, { sex: '', group: 'adult' });
+  assert.deepEqual(s.profile, { sex: '', group: 'adult', ageBand: '', trimester: 0 });
   assert.deepEqual(s.draft.values, { glu: '5.4' });
   assert.deepEqual(s.draft.labRefs, { ast: { lo: null, hi: 40 } });
   assert.deepEqual(s.history.map(h => h.id), ['ok-1']);
@@ -51,4 +51,10 @@ test('xóa dữ liệu', () => {
   createStore(ls, DATA.tests).clearAll();
   assert.equal(ls.getItem(KEY), null);
   assert.equal(ls.getItem(OLD_KEY), null);
+});
+test('lưu đối tượng trẻ em / thai phụ', () => {
+  const s = sanitize({ profile: { sex: 'male', group: 'pregnant', trimester: 2, ageBand: '5-9y' } }, DATA.tests);
+  assert.deepEqual(s.profile, { sex: 'female', group: 'pregnant', ageBand: '', trimester: 2 });
+  const c = sanitize({ profile: { sex: 'male', group: 'child', ageBand: 'xx', trimester: 5 } }, DATA.tests);
+  assert.deepEqual(c.profile, { sex: 'male', group: 'child', ageBand: '', trimester: 0 });
 });

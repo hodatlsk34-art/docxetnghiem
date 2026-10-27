@@ -2,12 +2,12 @@
 // lưu trữ ở storage.js, đọc ảnh ở ocr.js.
 import { h, clear, icon, svg } from './dom.js';
 import { parseNumber, parseLabRef, formatNum, QUAL_LABEL } from './validation.js';
-import { classify, bucket, evaluateRules, relatedTests, refFor, PROFILE_GROUPS } from './classification.js';
+import { classify, bucket, evaluateRules, relatedTests, refFor, specialFor, PROFILE_GROUPS, AGE_BANDS, TRIMESTERS, ageBandFromYears, profileLabel } from './classification.js';
 import { createStore, newId } from './storage.js';
 import { parseLabText, recognizeImages } from './ocr.js';
 import { installCard, installSteps, isStandalone } from './install.js';
 
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.2.0';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -20,7 +20,7 @@ const QUAL_OPTIONS = {
   endo: [['', 'Chọn…'], ['neg', 'Âm tính'], ['pos', 'Dương tính']]
 };
 const SAMPLE = {
-  profile: { sex: 'female', group: 'adult' },
+  profile: { sex: 'female', group: 'adult', ageBand: '', trimester: 0 },
   values: { hgb: '105', rbc: '4.3', hct: '34', mcv: '72', mch: '23', rdw: '16.2', wbc: '6.8', neu: '4.1', plt: '262',
     glu: '6.1', hba1c: '5.9', chol: '5.6', tg: '2.0', hdl: '1.2', ldl: '3.7', crea: '70', alt: '52', ast: '38', ggt: '45',
     ferritin: '9', tsh: '2.1', u_leu: 'neg', u_nit: 'neg', u_pro: 'neg' }
@@ -136,6 +136,7 @@ function pill(res, small = false) {
 }
 function shortLabel(res) {
   if (res.state === 'critical') return 'Nguy hiểm';
+  if (res.state === 'normal' && res.basis === 'special') return 'Bình thường';
   if (res.state === 'normal' && res.basis !== 'clinical') return 'Trong khoảng';
   if (res.label.length <= 16) return res.label;
   if (res.level === 'ok') return 'Bình thường';
@@ -146,7 +147,7 @@ function shortLabel(res) {
 }
 /** Nhãn đầy đủ khi nhãn trên huy hiệu bị rút gọn (ví dụ "Tiền đái tháo đường"). */
 function fullLabel(res) {
-  return res && res.label && shortLabel(res) !== res.label && res.state !== 'critical' && res.state !== 'normal' ? res.label : '';
+  return res && res.label && shortLabel(res) !== res.label && res.state !== 'critical' && (res.state !== 'normal' || res.basis === 'special') ? res.label : '';
 }
 
 function groupBadge(t) {
@@ -158,6 +159,14 @@ function refText(t, labRef, profile = S.profile) {
   if (t.type === 'qual') return 'Bình thường: âm tính';
   const one = (lo, hi) => hi == null ? `≥ ${formatNum(lo)}` : (lo == null || lo === 0) ? `≤ ${formatNum(hi)}` : `${formatNum(lo)} – ${formatNum(hi)}`;
   if (labRef && (labRef.lo != null || labRef.hi != null)) return one(labRef.lo, labRef.hi) + ' (theo phiếu)';
+  const sp = specialFor(t, profile);
+  if (sp && sp.kind === 'ref') return sp.lo == null ? `≤ ${formatNum(sp.hi)}` : sp.hi == null ? `≥ ${formatNum(sp.lo)}` : one(sp.lo, sp.hi);
+  if (sp && sp.kind === 'bands') {
+    const okI = sp.bands.findIndex(b => b.level === 'ok');
+    const lo = okI > 0 ? sp.bands[okI - 1].lt : null, hi = sp.bands[okI].lt;
+    return one(lo, hi >= 99 ? null : hi).replace(/^≤/, '<');
+  }
+  if (sp && (sp.kind === 'na' || sp.kind === 'missing')) return 'Theo phiếu xét nghiệm';
   if (t.bands) {
     const ok = t.bands.filter(b => b.level === 'ok');
     const i0 = t.bands.indexOf(ok[0]);
@@ -180,7 +189,7 @@ function displayValue(t, raw) {
   const p = parseNumber(raw);
   return p.state === 'ok' ? (p.qualifier ? p.qualifier + ' ' : '') + formatNum(p.value) : String(raw);
 }
-const SOURCE_BASIS = { lab: 'Ngưỡng in trên phiếu của bạn', app: 'Khoảng tham chiếu phổ biến ở người lớn', clinical: 'Ngưỡng quyết định lâm sàng', critical: 'Giá trị báo động phổ biến của phòng xét nghiệm' };
+const SOURCE_BASIS = { special: 'Ngưỡng riêng cho đối tượng đã chọn', lab: 'Ngưỡng in trên phiếu của bạn', app: 'Khoảng tham chiếu phổ biến ở người lớn', clinical: 'Ngưỡng quyết định lâm sàng', critical: 'Giá trị báo động phổ biến của phòng xét nghiệm' };
 
 function toast(msg, kind = 'info', action) {
   const box = document.getElementById('toasts');
@@ -281,8 +290,9 @@ function screenPhoto() {
   }
   const age = hints.age ?? (hints.birthYear ? new Date().getFullYear() - hints.birthYear : null);
   if (age != null && age >= 0 && age < 18 && S.profile.group !== 'child') {
-    hintRow.push(h('div', { class: 'card hint warn' }, h('span', { text: `Phiếu có vẻ của trẻ ${age} tuổi. Ngưỡng của app dành cho người lớn.` }),
-      h('button', { class: 'btn sm', onclick: e => { S.profile.group = 'child'; persist(); e.target.closest('.hint').remove(); } }, 'Chọn "Trẻ em"')));
+    const band = age >= 2 ? ageBandFromYears(age) : '';
+    hintRow.push(h('div', { class: 'card hint warn' }, h('span', { text: `Phiếu có vẻ của trẻ khoảng ${age} tuổi. App sẽ dùng ngưỡng dành cho trẻ em${band ? '' : ' (hãy chọn tuổi ở màn Đọc phiếu)'}.` }),
+      h('button', { class: 'btn sm', onclick: e => { Object.assign(S.profile, { group: 'child', ageBand: band, trimester: 0 }); persist(); e.target.closest('.hint').remove(); toast('Đã chọn đối tượng Trẻ em' + (band ? ' ' + profileLabel(S.profile).replace('Trẻ em ', '') : '') + '.'); } }, 'Áp dụng')));
   }
   wrap.append(...hintRow);
 
@@ -418,17 +428,31 @@ function tile(route, ic, cls, title, sub) {
 
 // ---------------------------------------------------------------- NHẬP
 function profileBlock() {
+  const set = patch => { Object.assign(S.profile, patch); persist(); render(); };
   const sexBtn = (v, label, sym) => h('button', { class: 'seg-btn' + (S.profile.sex === v ? ' on' : ''), 'aria-pressed': String(S.profile.sex === v),
-    onclick: () => { S.profile.sex = S.profile.sex === v ? '' : v; persist(); render(); } }, h('span', { class: 'sym', text: sym, 'aria-hidden': 'true' }), label);
+    onclick: () => {
+      const sex = S.profile.sex === v ? '' : v;
+      // Chọn "Nam" khi đang ở "Mang thai" → chuyển về người lớn
+      set(S.profile.group === 'pregnant' && sex !== 'female' ? { sex, group: 'adult', trimester: 0 } : { sex });
+    } }, h('span', { class: 'sym', text: sym, 'aria-hidden': 'true' }), label);
+  const chip = (on, label, onclick) => h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick }, label);
+  const g = S.profile.group;
   return h('div', { class: 'card profile' },
     h('div', { class: 'field' }, h('span', { class: 'lbl', text: 'Giới tính' }),
       h('div', { class: 'seg' }, sexBtn('male', 'Nam', '♂'), sexBtn('female', 'Nữ', '♀')),
       !S.profile.sex ? h('p', { class: 'muted small', text: 'Chưa chọn: các chỉ số có ngưỡng khác nhau giữa nam và nữ sẽ chưa được phân loại.' }) : null),
     h('div', { class: 'field' }, h('span', { class: 'lbl', text: 'Đối tượng' }),
-      h('div', { class: 'chips' }, Object.entries(PROFILE_GROUPS).map(([k, label]) =>
-        h('button', { class: 'chip' + (S.profile.group === k ? ' on' : ''), 'aria-pressed': String(S.profile.group === k),
-          onclick: () => { S.profile.group = k; persist(); render(); } }, label))),
-      S.profile.group !== 'adult' ? h('p', { class: 'warn-t small' }, icon('alert'), 'Ngưỡng của app dành cho người lớn không mang thai. Hãy nhập ngưỡng in trên phiếu cho từng chỉ số để được phân loại.') : null));
+      h('div', { class: 'chips' }, Object.entries(PROFILE_GROUPS).map(([k, label]) => chip(g === k, label, () =>
+        set(k === 'pregnant' ? { group: k, sex: 'female', ageBand: '' } : k === 'child' ? { group: k, trimester: 0 } : { group: k, ageBand: '', trimester: 0 }))))),
+    g === 'child' ? h('div', { class: 'field sub-field' }, h('span', { class: 'lbl', text: 'Tuổi của trẻ' }),
+      h('div', { class: 'chips' }, AGE_BANDS.map(([k, label]) => chip(S.profile.ageBand === k, label, () => set({ ageBand: k })))),
+      !S.profile.ageBand ? h('p', { class: 'warn-t small' }, icon('alert'), 'Chọn tuổi để app áp dụng ngưỡng dành cho trẻ em.') : null) : null,
+    g === 'pregnant' ? h('div', { class: 'field sub-field' }, h('span', { class: 'lbl', text: 'Giai đoạn thai kỳ' }),
+      h('div', { class: 'chips' }, Object.entries(TRIMESTERS).map(([k, label]) => chip(S.profile.trimester === Number(k), label, () => set({ trimester: Number(k) })))),
+      !S.profile.trimester ? h('p', { class: 'warn-t small' }, icon('alert'), 'Chọn giai đoạn để app áp dụng ngưỡng dành cho thai phụ.') : null) : null,
+    g !== 'adult' ? h('p', { class: 'muted small', text: g === 'child'
+      ? 'App có ngưỡng riêng cho trẻ em với Hb (WHO 2024), mỡ máu (NHLBI 2011), đường huyết và HbA1c (ADA). Các chỉ số thay đổi nhiều theo tuổi (bạch cầu, tiểu cầu, men gan, creatinin…) cần ngưỡng in trên phiếu.'
+      : 'App có ngưỡng riêng cho thai phụ với Hb theo giai đoạn (WHO 2024), đường huyết đói (IADPSG) và TSH (ATA 2017). HbA1c và mỡ máu không dùng để đánh giá khi mang thai. Các chỉ số khác cần ngưỡng in trên phiếu.' }) : null);
 }
 
 function screenEnter() {
@@ -563,7 +587,7 @@ function entryRow(t, res) {
   const refBox = t.type === 'num' ? h('details', { class: 'labref', open: !!S.draft.labRefs[id] },
     h('summary', { text: S.draft.labRefs[id] ? 'Ngưỡng trên phiếu' : '＋ Ngưỡng trên phiếu (nếu khác)' }),
     h('div', { class: 'ref-in' }, lo, h('span', { text: '–' }), hi, h('span', { class: 'unit', text: t.unit })), refErr,
-    h('p', { class: 'muted small', text: `Ngưỡng của app: ${refText(t, null)}. Ngưỡng trên phiếu được ưu tiên khi phân loại.` })) : null;
+    h('p', { class: 'muted small', text: `Ngưỡng của app${S.profile.group !== 'adult' ? ' (' + profileLabel(S.profile) + ')' : ''}: ${refText(t, null)}. Ngưỡng trên phiếu được ưu tiên khi phân loại.` })) : null;
 
   const row = h('div', { class: 'e-row' },
     groupBadge(t),
@@ -619,7 +643,7 @@ function screenResults(arg, snapshot) {
   ids.forEach(id => cnt[bucket(R[id])]++);
   const when = src.at ? new Date(src.at) : new Date();
   const fmtDate = d => d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  const prof = [src.profile.sex === 'male' ? 'Nam' : src.profile.sex === 'female' ? 'Nữ' : 'Chưa chọn giới tính', PROFILE_GROUPS[src.profile.group]].join(' · ');
+  const prof = [src.profile.sex === 'male' ? 'Nam' : src.profile.sex === 'female' ? 'Nữ' : 'Chưa chọn giới tính', profileLabel(src.profile)].join(' · ');
 
   const summary = h('div', { class: 'card summary' },
     h('div', { class: 'row-between' }, h('h2', { class: 'sec', text: 'Tổng quan kết quả' }), h('span', { class: 'muted small', text: fmtDate(when) })),
@@ -732,7 +756,8 @@ function screenDetail(id) {
       h('div', { class: 'big' }, h('b', { class: 'num', text: r.display || displayValue(t, raw) }), ' ', h('span', { text: t.unit })),
       h('div', { class: 'row-between small' }, h('span', { text: 'Khoảng tham chiếu' }), h('strong', { text: refText(t, labRef) })),
       fullLabel(r) ? h('p', { class: 'strong', text: fullLabel(r) }) : null,
-      r.basis ? h('p', { class: 'muted small', text: 'Căn cứ phân loại: ' + SOURCE_BASIS[r.basis] + '.' }) : null,
+      r.basis ? h('p', { class: 'muted small', text: 'Căn cứ phân loại: ' + SOURCE_BASIS[r.basis] + (r.basis === 'special' ? ` (${profileLabel(S.profile)})` : '') + '.' + (r.source && D.sources[r.source] ? ' Nguồn: ' + D.sources[r.source].split(' — ')[0] + '.' : '') }) : null,
+      r.note ? h('p', { class: 'tip small', text: r.note }) : null,
       r.reason ? h('p', { class: r.state === 'invalid' ? 'err small' : 'warn-t small', text: r.reason }) : null,
       rangeBar(t, raw, labRef));
     if (r.state === 'critical') card.append(h('p', { class: 'crit-t', text: 'Mức này cần được đánh giá khẩn cấp. Liên hệ ngay bác sĩ/cơ sở y tế; gọi 115 nếu có triệu chứng nặng.' }));
@@ -774,10 +799,12 @@ function screenDetail(id) {
     if (t.note) panel.append(h('h3', { text: 'Lưu ý khi đọc' }), h('p', { text: t.note }));
     panel.append(h('h3', { text: 'Giới hạn diễn giải' }), h('ul', {},
       h('li', { text: 'Mỗi phòng xét nghiệm có khoảng tham chiếu riêng; hãy ưu tiên khoảng in trên phiếu.' }),
-      h('li', { text: 'Ngưỡng trong app dành cho người lớn; trẻ em và người mang thai có ngưỡng khác.' }),
+      h('li', { text: t.special ? `Có ngưỡng riêng cho: ${[t.special.child && 'trẻ em', t.special.pregnant && 'thai phụ'].filter(Boolean).join(', ')}${t.special.pregnant && t.special.pregnant.mode === 'na' ? ' (không áp dụng khi mang thai)' : ''}. Chọn đúng đối tượng ở màn Đọc phiếu.` : 'Ngưỡng trong app dành cho người lớn; với trẻ em và thai phụ cần dùng ngưỡng in trên phiếu.' }),
       h('li', { text: 'Một kết quả lệch nhẹ một lần thường chưa có ý nghĩa; bác sĩ có thể hẹn làm lại.' }),
       t.bands ? h('li', { text: 'Chỉ số này dùng ngưỡng quyết định lâm sàng, khác với khoảng tham chiếu của phòng xét nghiệm.' }) : null));
+    const spSrc = t.special ? [...new Set(Object.values(t.special).map(x => x.source).filter(Boolean))] : [];
     panel.append(h('h3', { text: 'Nguồn tham khảo' }), h('p', { class: 'small', text: (D.sources && D.sources[t.source]) || 'Đang cập nhật.' }),
+      spSrc.map(k => h('p', { class: 'small', text: D.sources[k] || '' })),
       h('p', { class: 'tag warn', text: `Trạng thái rà soát chuyên môn: ${(D.review && D.review.status) || 'chưa rà soát'}` }));
   }
   wrap.append(tabBar, panel);
@@ -788,7 +815,13 @@ function rangeBar(t, raw, labRef) {
   if (t.type !== 'num') return null;
   const p = parseNumber(raw); if (p.state !== 'ok') return null;
   let lo, hi;
+  const sp = specialFor(t, S.profile);
   if (labRef && (labRef.lo != null || labRef.hi != null)) { lo = labRef.lo ?? 0; hi = labRef.hi; }
+  else if (sp && sp.kind === 'ref') { lo = sp.lo ?? 0; hi = sp.hi; }
+  else if (sp && sp.kind === 'bands') {
+    const okI = sp.bands.findIndex(b => b.level === 'ok');
+    lo = okI > 0 ? sp.bands[okI - 1].lt : 0; hi = sp.bands[okI].lt; if (hi >= 99) hi = null;
+  } else if (sp && sp.kind !== 'same') return null;
   else if (t.bands) {
     const ok = t.bands.filter(b => b.level === 'ok'); const i0 = t.bands.indexOf(ok[0]);
     lo = i0 > 0 ? t.bands[i0 - 1].lt : 0; hi = ok[ok.length - 1].lt; if (hi >= 999) hi = null;
@@ -906,7 +939,7 @@ function sparkline(t, pts) {
 function wipeAll() {
   const r = store.clearAll();
   if (!r.ok) { toast(r.error, 'warn'); return; }
-  S = { v: 2, profile: { sex: '', group: 'adult' }, draft: { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] }, history: [] };
+  S = { v: 2, profile: { sex: '', group: 'adult', ageBand: '', trimester: 0 }, draft: { values: {}, labRefs: {}, order: [], sample: false, fromPhoto: [] }, history: [] };
   ui.savedSig = ''; go(''); toast('Đã xóa toàn bộ dữ liệu trên trình duyệt này.');
 }
 
@@ -928,6 +961,7 @@ function screenGuide() {
     ]), h('p', { class: 'small muted', text: 'Ảnh được xử lý ngay trên máy. Lần đầu dùng cần mạng để tải bộ nhận dạng chữ (khoảng 5 MB) từ cdn.jsdelivr.net.' })),
     sec('doc', 'Nhập tay', ul([
       'Chọn giới tính và đối tượng trước: nhiều chỉ số có ngưỡng khác nhau giữa nam và nữ.',
+      'Trẻ em: chọn thêm nhóm tuổi. Thai phụ: chọn giai đoạn thai kỳ. App áp dụng ngưỡng riêng cho Hb, mỡ máu, đường huyết, HbA1c, TSH; các chỉ số khác cần ngưỡng in trên phiếu.',
       'Dùng dấu phẩy hoặc dấu chấm cho phần thập phân (5,4 hoặc 5.4). Không dùng dấu phân cách hàng nghìn.',
       'Có thể nhập "< 0,5" hoặc "> 1000" như phiếu ghi.',
       'Nếu phiếu in khoảng tham chiếu khác app, mở "Ngưỡng trên phiếu" để nhập — app sẽ ưu tiên ngưỡng đó.'
