@@ -3,7 +3,7 @@
 // - Biểu tượng, phông chữ: dùng bản đã lưu trước.
 // - Bộ nhận dạng chữ (cdn.jsdelivr.net): để trình duyệt và Tesseract tự lưu, không lưu trùng ở đây.
 // - Chỉ xóa cache có tiền tố "dpxn-" của chính app.
-const VERSION = '2.0.0';
+const VERSION = '2.0.1';
 const CACHE = 'dpxn-' + VERSION;
 const CORE = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',

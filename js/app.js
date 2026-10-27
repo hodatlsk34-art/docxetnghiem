@@ -6,7 +6,7 @@ import { classify, bucket, evaluateRules, relatedTests, refFor, PROFILE_GROUPS }
 import { createStore, newId } from './storage.js';
 import { parseLabText, recognizeImages } from './ocr.js';
 
-export const APP_VERSION = '2.0.0';
+export const APP_VERSION = '2.0.1';
 
 const GROUP_STYLE = {
   cbc: { icon: 'drop', cls: 'g-cbc', label: 'Huyết học' },
@@ -70,9 +70,9 @@ function renderFatal() {
 // ---------------------------------------------------------------- khung chung
 function setupChrome() {
   const nav = document.getElementById('nav');
-  const items = [['home', 'Trang chủ', ''], ['doc', 'Đọc phiếu', 'nhap'], ['search', 'Tra cứu', 'tracuu'], ['clock', 'Lịch sử', 'lichsu'], ['book', 'Hướng dẫn', 'huongdan']];
-  for (const [ic, label, route] of items) {
-    nav.append(h('a', { href: '#' + route, class: 'nav-item', dataset: { route } }, icon(ic), h('span', { text: label })));
+  const items = [['home', 'Trang chủ', '', 'm-home'], ['doc', 'Đọc phiếu', 'nhap', 'm-doc'], ['search', 'Tra cứu', 'tracuu', 'm-look'], ['clock', 'Lịch sử', 'lichsu', 'm-hist'], ['book', 'Hướng dẫn', 'huongdan', 'm-guide']];
+  for (const [ic, label, route, cls] of items) {
+    nav.append(h('a', { href: '#' + route, class: 'nav-item ' + cls, dataset: { route } }, h('span', { class: 'nav-ic' }, icon(ic)), h('span', { class: 'nav-tx', text: label })));
   }
   const banner = document.getElementById('offline');
   const upd = () => { banner.hidden = navigator.onLine; };
@@ -404,10 +404,10 @@ function screenHome() {
     h('div', { class: 'card note' }, icon('info'),
       h('p', { text: 'Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán của bác sĩ. Luôn đối chiếu với phiếu gốc.' })),
     h('nav', { class: 'tiles', 'aria-label': 'Chức năng' },
-      tile('nhap', 'doc', 't-teal', 'Nhập tay', 'Gõ chỉ số và xem kết quả'),
-      tile('tracuu', 'search', 't-violet', 'Tra cứu chỉ số', `Ý nghĩa ${D.tests.length} xét nghiệm`),
-      tile('lichsu', 'clock', 't-amber', 'Lịch sử', S.history.length ? `${S.history.length} lần đã lưu` : 'Lưu và so sánh các lần'),
-      tile('huongdan', 'book', 't-rose', 'Hướng dẫn', 'Cách chụp phiếu, đọc kết quả')));
+      tile('nhap', 'doc', 'm-doc', 'Nhập tay', 'Gõ chỉ số và xem kết quả'),
+      tile('tracuu', 'search', 'm-look', 'Tra cứu chỉ số', `Ý nghĩa ${D.tests.length} xét nghiệm`),
+      tile('lichsu', 'clock', 'm-hist', 'Lịch sử', S.history.length ? `${S.history.length} lần đã lưu` : 'Lưu và so sánh các lần'),
+      tile('huongdan', 'book', 'm-guide', 'Hướng dẫn', 'Cách chụp phiếu, đọc kết quả')));
 }
 function tile(route, ic, cls, title, sub) {
   return h('a', { href: '#' + route, class: 'tile ' + cls }, h('span', { class: 'tile-ic' }, icon(ic)),
